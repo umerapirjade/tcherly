@@ -14,13 +14,13 @@ The backend reads configuration from `.env` in the root project directory via `c
 | `PORT` | Number | `3000` | Port for the Express server. | Optional |
 | `NODE_ENV` | String | `development` | Runtime environment (`development` or `production`). In development, CORS is enabled and morgan logs to console. | Optional |
 | `DB_URI` | String | `mongodb://localhost:27017/test-debe` (`debe` in `.env.example`) | MongoDB connection URI for local or remote database. Falls back to `test-debe` when unset. | Optional (Required in Prod) |
-| `DB_PROD` | String | — | Production MongoDB connection string (e.g. MongoDB Atlas). Used if specified. | Optional |
+| `DB_PROD` | String | — | **Not read by the code.** To use Atlas/production, put the connection string in `DB_URI`. | Unused |
 | `SESSION_EXPIRATION` | Number | `604800000` (7 days) | Express session duration in milliseconds. | Optional |
 | `SESSION_SECRET` | String | `setup_dotenv_file_for_security` | Secret used to sign session cookies. Must be changed in production. | **Required in Prod** |
 | `JWT_EXPIRY` | Number | `3600000` (1 hour) | Access token expiration lifetime in milliseconds. | Optional |
 | `JWT_REFRESH_EXPIRY` | Number | `2592000000` (30 days) | Refresh token expiration lifetime in milliseconds. | Optional |
 | `JWT_SECRET` | String | `setup_dotenv_file_for_security` | Cryptographic secret used by Passport JWT strategies. Must be changed in production. | **Required in Prod** |
-| `GOOGLE_API_KEY` | String | — | Google API key with YouTube Data API v3 enabled. Used when creating a lesson to automatically fetch video length. | Optional for dev |
+| `GOOGLE_API_KEY` | String | — | Google API key with YouTube Data API v3 enabled. Used when creating a lesson to fetch video length. If unset, the duration is read from the public YouTube page instead. | Optional (recommended in prod) |
 | `MG_APIKEY` | String | — | Mailgun API Key. Required to deliver password-reset emails. | Optional for dev |
 | `MG_DOMAIN` | String | — | Mailgun sending domain for outgoing transactional emails. | Optional for dev |
 | `DEPLOYMENT_HOST` | String | — | SSH host/IP address for PM2 production deployment (`ecosystem.config.js`). | Optional |

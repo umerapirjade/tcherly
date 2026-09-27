@@ -88,7 +88,9 @@ const passport = require("./middleware/passport");
   app.use(function (err, req, res, next) {
     res.locals.message = err.message;
     res.locals.error = req.app.get("env") === "development" ? err : {};
-    res.status(err.status || 500);
+    if (err.status !== 404) console.error(err);
+    if (res.headersSent) return next(err);
+    res.status(err.status || 500).json({ success: false, message: err.status ? err.message : "Internal server error." });
   });
 
   const server = http.createServer(app);

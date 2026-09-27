@@ -1,7 +1,7 @@
 const crs = require("crypto-random-string");
 const Course = require("../database/models/course");
 const Lesson = require("../database/models/lesson");
-const { youtube } = require("../utils/youtube");
+const { getVideoDuration } = require("../utils/youtube");
 const { dashIt } = require("../handlers/misc");
 
 const isValidObjectId = (str) => {
@@ -139,7 +139,16 @@ const addNewLesson = async (req, res) => {
         success: false,
         message: "Provide required fields",
       });
-    const { durationSeconds } = await youtube.getVideo(youtube_link);
+    let durationSeconds;
+    try {
+      durationSeconds = await getVideoDuration(youtube_link);
+    } catch (error) {
+      console.log(error);
+      return res.status(400).send({
+        success: false,
+        message: error.message || "Could not fetch YouTube video details.",
+      });
+    }
     const { id } = req.params;
     const user_id = req.user ? req.user._id : null;
     const unique_name = dashIt(name);
@@ -174,6 +183,10 @@ const addNewLesson = async (req, res) => {
         }
       }
     }
+    return res.status(404).send({
+      success: false,
+      message: "Course not found",
+    });
   } catch (error) {
     console.log(error);
     return res.status(500).send({

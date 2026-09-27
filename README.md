@@ -98,13 +98,14 @@ Comprehensive architectural specifications and system diagrams are documented in
 Ensure you have the following installed:
 
 1. **[Node.js](https://nodejs.org/)**:
-   - Recommended: Node.js `v14.x` or `v16.x` LTS.
-   - *Node 17+ note*: React Scripts 4.0.1 (Webpack 4) requires the legacy OpenSSL provider. If using Node 17+, run `export NODE_OPTIONS=--openssl-legacy-provider`.
+   - **Required: Node.js `v16.x`** (pinned in `.node-version`; `fnm use` / `nvm use 16` picks it up).
+   - *Node 17+ does not work*: React Scripts 4 crashes on start with `ERR_PACKAGE_PATH_NOT_EXPORTED` (postcss), and `NODE_OPTIONS=--openssl-legacy-provider` does **not** fix that. If you switch Node versions after installing, run `npm rebuild bcrypt` (or delete `node_modules` and reinstall).
 2. **[Yarn](https://classic.yarnpkg.com/en/docs/install/)** (v1.x):
    ```bash
    npm install --global yarn
    ```
 3. **[MongoDB](https://www.mongodb.com/)** (v4.4+) running locally (`mongodb://localhost:27017/debe` in `.env.example`, falling back to `mongodb://localhost:27017/test-debe`) or via a remote connection string.
+   - No local install? Run it with Docker: `docker run -d --name tcherly-mongo -p 127.0.0.1:27017:27017 -v tcherly-mongo-data:/data/db mongo:4.4`
 
 ### Step-by-step Setup
 

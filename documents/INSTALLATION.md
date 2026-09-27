@@ -9,11 +9,8 @@ This guide walks you through setting up **Tcherly** (DEBE) locally for developme
 Before starting, verify you have the required runtimes and tools installed:
 
 1. **Node.js**:
-   - **Recommended**: Node.js `v14.x` or `v16.x` LTS.
-   - *Note on Node 17+*: React Scripts 4.0.1 uses Webpack 4, which requires the legacy OpenSSL provider on newer Node versions. If using Node 17+, set:
-     ```bash
-     export NODE_OPTIONS=--openssl-legacy-provider
-     ```
+   - **Required**: Node.js `v16.x` (pinned in `.node-version`).
+   - *Node 17+ is not supported*: React Scripts 4 fails on start with `ERR_PACKAGE_PATH_NOT_EXPORTED` (postcss). The `--openssl-legacy-provider` flag does not fix this — use Node 16 (e.g. `fnm install 16 && fnm use`).
    - Verify: `node -v`
 2. **Yarn** (Classic v1.x):
    ```bash
@@ -143,9 +140,10 @@ yarn generate --email researcher@example.com --remove
 
 - **MongoDB Connection Error (`MongoNetworkError: failed to connect to server`)**:
   Ensure MongoDB service is actively running (`brew services list` or `sudo systemctl status mongod`) and matches `DB_URI` in `.env`.
-- **Node 17+ OpenSSL Error (`ERR_OSSL_EVP_UNSUPPORTED`)**:
-  Webpack 4 inside Create React App requires the OpenSSL legacy provider. Run:
-  `export NODE_OPTIONS=--openssl-legacy-provider` before running `yarn dev` or `yarn build`.
+- **`ERR_PACKAGE_PATH_NOT_EXPORTED` / `ERR_OSSL_EVP_UNSUPPORTED` on `yarn dev`**:
+  You are on Node 17+. Switch to Node 16 and reinstall (or `npm rebuild bcrypt`) so native modules match.
+- **Lesson creation fails**:
+  Without `GOOGLE_API_KEY`, video duration is read from the public YouTube page. If that fails (network/YouTube changes), set a valid YouTube Data API v3 key in `.env`.
 - **Port Conflicts**:
   If port `3000` or `8080` is in use, modify `PORT` in `.env` (backend) or `client/.env` (frontend) respectively.
 

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
-import api from "handler/api";
+import api, { getErrorMessage, saveBlobResponse } from "handler/api";
+import { useTokenSession } from "provider/session";
+import ServerUnreachable from "components/ServerUnreachable";
 import { Form, InputGroup, Button, Spinner, Alert, Tabs, Tab } from "react-bootstrap";
-import { useHistory } from "react-router-dom";
 
 import BootstrapTable from "react-bootstrap-table-next";
-import JSFileDownload from "js-file-download";
 import { Formik } from "formik";
 import * as Yup from "yup";
 
@@ -20,113 +20,48 @@ const ResearcherContext = createContext({
   logout: () => {},
 });
 
-let memoryToken = null;
-const storeToken = ({ jwt_token, jwt_token_expiry }) => {
-  memoryToken = {
-    token: jwt_token,
-    expiry: jwt_token_expiry,
-  };
-};
+const LOGOUT_BODY = () => ({});
 
 function useProvideResearcherAuth() {
-  const subs = useRef(true);
+  const {
+    user: researcher,
+    loading,
+    setLoading,
+    subs,
+    storeSession,
+    refresh,
+    request,
+    logout,
+  } = useTokenSession({
+    refreshPath: "/auth/researcher/refresh",
+    logoutPath: "/auth/researcher/logout",
+    getLogoutBody: LOGOUT_BODY,
+  });
 
-  const [researcher, setResearcher] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const login = useCallback(
+    async (email, password, remember = true) => {
+      setLoading(true);
+      try {
+        if (!email && !password) return ["Please enter both username and password", false];
 
-  const login = useCallback(async (email, password, remember = true) => {
-    setLoading(true);
-    try {
-      if (!email && !password) return ["Please enter both username and password", false];
+        const { data } = await api.post("/auth/researcher/signin", { email, password, remember }, { withCredentials: true });
 
-      const { data } = await api.post("/auth/researcher/signin", { email, password, remember }, { withCredentials: true });
-
-      if (data && data.success) {
-        if (subs.current) {
-          storeToken(data);
-          setResearcher(data.user);
+        if (data && data.success) {
+          storeSession(data);
+          return [null, true];
         }
 
-        return [null, true];
-      }
-
-      return ["There was an error in logging in, try again.", false];
-    } catch (error) {
-      return ["The email or password was incorrect.", false];
-    } finally {
-      if (subs.current) setLoading(false);
-    }
-  }, []);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const { data } = await api.post("/auth/researcher/refresh", {}, { withCredentials: true });
-
-      if (data.success) {
-        storeToken({ jwt_token: data.jwt_token, jwt_token_expiry: data.jwt_token_expiry });
-        setResearcher(data.user);
+        return ["There was an error in logging in, try again.", false];
+      } catch (error) {
+        const status = error && error.response && error.response.status;
+        if (status && status < 500) return ["The email or password was incorrect.", false];
+        return [getErrorMessage(error, "Couldn't log in, please try again."), false];
+      } finally {
         if (subs.current) setLoading(false);
-        return true;
       }
-
-      if (data && subs.current) setLoading(false);
-      return false;
-    } catch (error) {
-      throw new Error({ message: "Please login again." });
-    }
-  }, []);
-
-  const request = useCallback((type = null, url = null, data = {}, opts = {}) => {
-    if (typeof type !== "string") Promise.reject("Request type (GET/POST/PUT/DELETE) needed.");
-
-    if (typeof url !== "string") Promise.reject("Provide a valid string as url.");
-
-    if (data === null || opts === null) data = {};
-
-    data.date_client = Date.now();
-    if (typeof opts !== "object") opts = {};
-
-    if (memoryToken) opts.headers = { Authorization: memoryToken.token };
-
-    opts.withCredentials = true;
-
-    switch (type) {
-      case "GET":
-        return api.get(url, opts);
-      case "POST":
-        return api.post(url, data, opts);
-      case "PUT":
-        return api.put(url, data, opts);
-      case "DELETE":
-        return api.delete(url, opts);
-      default:
-        return Promise.reject("Please provide a valid request type");
-    }
-  }, []);
-
-  const logout = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      api
-        .post("/auth/researcher/logout", {}, { headers: { Authorization: memoryToken.token }, withCredentials: true })
-        .then(({ data }) => {
-          if (data.success) {
-            memoryToken = null;
-            setResearcher(null);
-            window.localStorage.setItem("logout", Date.now());
-            return resolve(true);
-          }
-          return resolve(false);
-        })
-        .catch((err) => {
-          console.log(err);
-          return reject({
-            message: "Some error occured.",
-          });
-        });
-    });
-  }, []);
+    },
+    [setLoading, storeSession, subs]
+  );
 
   return {
     researcher,
@@ -158,7 +93,6 @@ function ResearcherLogin() {
   const subscribed = useRef(true);
 
   const { login } = useResearcherAuth();
-  const history = useHistory();
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -178,10 +112,8 @@ function ResearcherLogin() {
       if (subscribed.current) {
         console.log({ error });
 
+        // On success the provider state switches this page to the researcher dashboard.
         if (error) setStatus({ loginForm: error });
-        else {
-          history.push("/dashboard");
-        }
       }
     } catch (error) {
       if (subscribed.current) {
@@ -260,46 +192,45 @@ function ResearcherLogin() {
 }
 
 function DownloadsForLesson({ lessonId }) {
+  const subscribed = useRef(true);
   const [loading, setLoading] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [error, setError] = useState(null);
   const { request } = useResearcherAuth();
 
-  const handleDownload = () => {
-    setLoading(true);
+  useEffect(() => {
+    subscribed.current = true;
+    return () => {
+      subscribed.current = false;
+    };
+  }, []);
 
-    request("GET", "/lessons/" + lessonId + "/feedback-export", null, { responseType: "blob" })
-      .then(({ data }) => {
-        if (data) {
-          JSFileDownload(data, lessonId + "-feedback-export.xlsx");
-          setLoading(false);
-        }
+  // Works both for the legacy sendFile response and the streamed xlsx with Content-Disposition.
+  const download = (url, fallbackName, setBusy) => {
+    setBusy(true);
+    setError(null);
+
+    request("GET", url, null, { responseType: "blob" })
+      .then((response) => saveBlobResponse(response, fallbackName))
+      .catch((err) => {
+        console.log(err);
+        if (subscribed.current) setError(err && err.response ? getErrorMessage(err, "Download failed, please try again.") : (err && err.message) || "Download failed, please try again.");
       })
       .finally(() => {
-        setLoading(false);
+        if (subscribed.current) setBusy(false);
       });
   };
 
-  const handleDownloadLogs = () => {
-    setLoadingLogs(true);
+  const handleDownload = () => download("/lessons/" + lessonId + "/feedback-export", lessonId + "-feedback-export.xlsx", setLoading);
 
-    request("GET", "/researcher/lesson/" + lessonId + "/logs", null, { responseType: "blob" })
-      .then(({ data }) => {
-        if (data) {
-          JSFileDownload(data, lessonId + "-studentwise-logs.xlsx");
-          setLoadingLogs(false);
-        }
-      })
-      .finally(() => {
-        setLoadingLogs(false);
-      });
-  };
+  const handleDownloadLogs = () => download("/researcher/lesson/" + lessonId + "/logs", lessonId + "-studentwise-logs.xlsx", setLoadingLogs);
 
   return (
     <>
       <Button disabled={loading || loadingLogs} size="sm" className="mr-1" onClick={handleDownload}>
         {loading ? (
           <div className="d-flex justify-content-center align-items-center px-4">
-            <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+            <div className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
           </div>
         ) : (
           "Download"
@@ -308,12 +239,13 @@ function DownloadsForLesson({ lessonId }) {
       <Button disabled={loading || loadingLogs} className="mt-1" size="sm" variant="info" onClick={handleDownloadLogs}>
         {loadingLogs ? (
           <div className="d-flex justify-content-center align-items-center px-2">
-            <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+            <div className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
           </div>
         ) : (
           "Logs"
         )}
       </Button>
+      {error && <div className="text-danger small mt-1">{error}</div>}
     </>
   );
 }
@@ -324,6 +256,7 @@ function RawDataTable() {
 
   const [loading, setLoading] = useState(false);
   const [lessons, setLessons] = useState([]);
+  const [error, setError] = useState(null);
 
   const tableColumns = [
     {
@@ -398,16 +331,20 @@ function RawDataTable() {
 
     const getData = async () => {
       setLoading(true);
+      setError(null);
       try {
         const { data } = await request("GET", "/researcher/lessons");
 
         if (data && data.success) {
-          if (subscribed.current) setLessons(data.lessons);
+          if (subscribed.current) setLessons(data.lessons || []);
+        } else if (subscribed.current) {
+          setError("Couldn't load lessons.");
         }
       } catch (error) {
         console.log(error);
+        if (subscribed.current) setError(getErrorMessage(error, "Couldn't load lessons."));
       } finally {
-        setLoading(false);
+        if (subscribed.current) setLoading(false);
       }
     };
 
@@ -419,6 +356,7 @@ function RawDataTable() {
   if (loading) return <Loader asDiv />;
   return (
     <div>
+      {error && <Alert variant="danger">{error}</Alert>}
       <BootstrapTable
         wrapperClasses="table-responsive"
         keyField="_id"
@@ -444,6 +382,7 @@ function UsersTable() {
 
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
+  const [error, setError] = useState(null);
 
   const tableColumns = [
     {
@@ -502,17 +441,21 @@ function UsersTable() {
 
     const getData = async () => {
       setLoading(true);
+      setError(null);
 
       try {
         const { data } = await request("GET", "/researcher/users");
 
         if (data && data.success) {
-          if (subscribed.current) setUsers(data.users);
+          if (subscribed.current) setUsers(data.users || []);
+        } else if (subscribed.current) {
+          setError("Couldn't load users.");
         }
       } catch (error) {
         console.log(error);
+        if (subscribed.current) setError(getErrorMessage(error, "Couldn't load users."));
       } finally {
-        setLoading(false);
+        if (subscribed.current) setLoading(false);
       }
     };
 
@@ -525,6 +468,7 @@ function UsersTable() {
 
   return (
     <div>
+      {error && <Alert variant="danger">{error}</Alert>}
       <BootstrapTable
         sort={{
           sortCaret: (order) => (
@@ -590,21 +534,31 @@ function ResearcherComponent() {
   const { researcher, refresh } = useResearcherAuth();
 
   const [loading, setLoading] = useState(false);
+  const [unreachable, setUnreachable] = useState(false);
 
-  useEffect(() => {
-    subscribed.current = true;
+  const checkSession = useCallback(() => {
     setLoading(true);
+    setUnreachable(false);
 
     refresh()
-      .catch(console.log)
+      .catch((error) => {
+        console.log(error);
+        // Couldn't reach the server (network error / 5xx): don't pretend the researcher is logged out.
+        if (subscribed.current) setUnreachable(true);
+      })
       .finally(() => {
         if (subscribed.current) setLoading(false);
       });
-
-    return () => (subscribed.current = false);
   }, [refresh]);
 
+  useEffect(() => {
+    subscribed.current = true;
+    checkSession();
+    return () => (subscribed.current = false);
+  }, [checkSession]);
+
   if (loading) return <Loader />;
+  if (unreachable && !researcher) return <ServerUnreachable onRetry={checkSession} />;
 
   return <div className="row">{researcher ? <ResearcherDashboard /> : <ResearcherLogin />}</div>;
 }

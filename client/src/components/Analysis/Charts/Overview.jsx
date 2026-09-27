@@ -43,7 +43,7 @@ const CustomTooltip = ({ active, payload, activeFields = {}, details = false, yM
           </span>
         </div>
 
-        <div className={1 ? "sb" : ""}>
+        <div className="sb">
           {net_difficult && (
             <div className="data" style={{ fontWeight: activeFields.net_difficult ? 600 : undefined }}>
               <span className="color" style={{ background: colors.net_difficult }}></span>

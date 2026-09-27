@@ -1,39 +1,40 @@
-const arg = require("arg");
-const { cyanBright, whiteBright, redBright } = require("chalk");
+// CLI helpers for data/generate.js (Node built-ins only: util.parseArgs + util.styleText)
+const { parseArgs, styleText } = require("util");
+
+// styleText with several strings joined by spaces (like chalk's variadic helpers)
+const style = (format) => (...text) => styleText(format, text.join(" "));
+const cyanBright = style("cyanBright");
+const whiteBright = style("whiteBright");
+const redBright = style("redBright");
 const errorTag = redBright("[ ERROR ]");
 
 const parseArguementsIntoOptions = (rawArgs = []) => {
   try {
-    const args = arg(
-      {
-        "--remove": Boolean,
-        "-r": "--remove",
-        "--help": Boolean,
-        "-h": "--help",
-        "--debug": Boolean,
-        "-d": "--debug",
-        "--email": String,
-        "-e": "--email",
-        "--pass": String,
-        "-p": "--pass",
-        "--name": String,
-        "-n": "--name",
+    const { values } = parseArgs({
+      args: rawArgs.slice(2),
+      strict: true,
+      options: {
+        remove: { type: "boolean", short: "r" },
+        help: { type: "boolean", short: "h" },
+        debug: { type: "boolean", short: "d" },
+        email: { type: "string", short: "e" },
+        pass: { type: "string", short: "p" },
+        name: { type: "string", short: "n" },
       },
-      { argv: rawArgs.splice(2) }
-    );
+    });
 
     return {
-      remove: args["--remove"] || false,
-      help: args["--help"] || false,
-      debug: args["--debug"] || process.env.DEBUG === "true",
-      email: args["--email"],
-      password: args["--pass"],
-      name: args["--name"],
+      remove: values.remove || false,
+      help: values.help || false,
+      debug: values.debug || process.env.DEBUG === "true",
+      email: values.email,
+      password: values.pass,
+      name: values.name,
     };
   } catch (error) {
-    if (error.code === "ARG_MISSING_REQUIRED_LONGARG") {
+    if (error.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE") {
       console.log(errorTag, "Arguement missing, please refer the help below.");
-    } else if (error.code === "ARG_UNKNOWN_OPTION") {
+    } else if (error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" || error.code === "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL") {
       console.log(errorTag, "Unknown command, please try one of the following.");
     } else {
       console.log(error);
@@ -47,11 +48,12 @@ const parseArguementsIntoOptions = (rawArgs = []) => {
 
 const printLine = (text = "", char = "-") => {
   if (typeof text === "string" && text.length > 0) {
-    const halfLen = process.stdout.columns / 2 - (text.length / 2 + 1);
+    const columns = process.stdout.columns || 80;
+    const halfLen = Math.max(0, Math.floor(columns / 2 - (text.length / 2 + 1)));
 
     console.log(cyanBright(char.repeat(halfLen), text, char.repeat(halfLen)));
   } else {
-    console.log(char.repeat(process.stdout.columns));
+    console.log(char.repeat(process.stdout.columns || 80));
   }
 };
 
@@ -79,7 +81,7 @@ const printHelpGuide = () => {
   printHelp("debug", "d", "Enable debug logging");
   printHelp("email", "e", `Use this parameter to provide a researcher email using ${cyanBright('--email "example@email.com"')}`);
   printHelp("name", "n", `Use this parameter with --email to provide a researcher name using ${cyanBright('--name "Example Name"')}`);
-  printHelp("password", "p", `Use this parameter with --email to provide a password using ${cyanBright('--password "someSafePassword"')}`);
+  printHelp("pass", "p", `Use this parameter with --email to provide a password using ${cyanBright('--pass "someSafePassword"')}`);
   printHelp("remove", "r", `Use this parameter with --email to remove the provided email`);
   console.groupEnd();
 
@@ -89,6 +91,7 @@ const printHelpGuide = () => {
 };
 
 module.exports = {
+  style,
   printLine,
   printHelpGuide,
   parseArguementsIntoOptions,

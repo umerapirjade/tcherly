@@ -92,7 +92,6 @@ function NewBookmarks() {
       }
     } catch (error) {
       console.log(error);
-    } finally {
     }
   };
 
@@ -130,9 +129,6 @@ function NewBookmarks() {
       // No need to refresh changes
     } catch (error) {
       console.log(error);
-    } finally {
-      if (subscribed.current) {
-      }
     }
   };
 
@@ -143,7 +139,6 @@ function NewBookmarks() {
       });
     } catch (error) {
       console.log(error);
-    } finally {
     }
   };
 
@@ -163,7 +158,6 @@ function NewBookmarks() {
       });
     } catch (error) {
       console.log(error);
-    } finally {
     }
   };
 

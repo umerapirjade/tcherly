@@ -10,8 +10,9 @@ const morgan = require("morgan");
 const serveFavicon = require("serve-favicon");
 
 const { db } = require("./database");
+const sanitize = require("./middleware/sanitize");
 
-const logFileStream = fs.createWriteStream(path.join(__dirname, "debe_online.log"), { flags: "a" });
+const isTest = config.app.env === "test";
 
 const logFormatter = (tokens, req, res) => {
   const url = tokens.url(req, res) || "";
@@ -27,42 +28,46 @@ const logFormatter = (tokens, req, res) => {
 
 const corsOpts = {
   credentials: true,
-  origin: true,
+  // Only origins from CORS_ORIGINS get CORS headers; requests without an Origin header are unaffected.
+  origin: (origin, callback) => callback(null, !!origin && config.cors.origins.includes(origin)),
   methods: ["GET", "POST", "PUT", "DELETE"],
 };
 
-const passport = require("./middleware/passport");
+let logFileStream = null;
+const getLogFileStream = () => {
+  if (!logFileStream) logFileStream = fs.createWriteStream(path.join(__dirname, "debe_online.log"), { flags: "a" });
+  return logFileStream;
+};
 
-(async () => {
+/**
+ * Connects to MongoDB (idempotent) and returns a fully configured express app.
+ * Rejects if the database connection fails.
+ */
+const createApp = async () => {
+  await db.connect();
+  // Surfaces unique-index build failures at startup (logged, never fatal)
+  await db.ensureIndexes();
+
+  const passport = require("./middleware/passport");
+
   const app = express();
-  const port = normalizePort(process.env.PORT || "3000");
 
-  app.set("port", port);
-
-  app.use(serveFavicon(path.join(__dirname, "public/favicon.ico")));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-  app.use(cookieParser());
-
-  if (process.env.NODE_ENV !== "production") app.use(cors(corsOpts));
-
-  try {
-    await db.connect();
-    const connection = db.getConnection();
-    if (connection) {
-      app.use(require("./middleware/session"));
-      if (config.app.env !== "production") app.use(morgan("dev"));
-      app.use(morgan(logFormatter, { stream: logFileStream }));
-    }
-  } catch (error) {
-    console.log(error);
-  }
-
-  app.use(passport.initialize());
-
-  app.set("trust proxy", true);
+  app.set("trust proxy", config.app.trustProxy);
   app.set("views", path.join(__dirname, "views"));
   app.set("view engine", "hbs");
+
+  app.use(serveFavicon(path.join(__dirname, "public/favicon.ico")));
+  if (config.cors.origins.length) app.use(cors(corsOpts));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(sanitize);
+  app.use(cookieParser());
+
+  app.use(require("./middleware/session"));
+  if (config.app.env !== "production" && !isTest) app.use(morgan("dev"));
+  if (!isTest) app.use(morgan(logFormatter, { stream: getLogFileStream() }));
+
+  app.use(passport.initialize());
 
   app.use(express.static(path.join(__dirname, "public")));
 
@@ -86,24 +91,49 @@ const passport = require("./middleware/passport");
   }
 
   app.use(function (err, req, res, next) {
+    // Malformed JSON / urlencoded bodies: never echo the parser's message (it quotes the input)
+    if (err && (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400))) {
+      if (res.headersSent) return next(err);
+      return res.status(400).json({ success: false, message: "Invalid request body." });
+    }
     res.locals.message = err.message;
     res.locals.error = req.app.get("env") === "development" ? err : {};
-    if (err.status !== 404) console.error(err);
+    // Client errors (404, 403 bad CSRF token, ...) are expected; only log server-side failures
+    if (!err.status || err.status >= 500) console.error(err);
     if (res.headersSent) return next(err);
     res.status(err.status || 500).json({ success: false, message: err.status ? err.message : "Internal server error." });
   });
+
+  return app;
+};
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+  if (isNaN(port)) return val;
+  if (port >= 0) return port;
+  return false;
+}
+
+const start = async () => {
+  // Loud startup warning/error when production mail isn't really delivered
+  require("./utils/mail").checkMailConfig();
+
+  const port = normalizePort(process.env.PORT || "3000");
+
+  let app;
+  try {
+    app = await createApp();
+  } catch (error) {
+    console.error("Failed to start server: could not connect to MongoDB at startup.", error && error.message ? error.message : error);
+    process.exit(1);
+  }
+
+  app.set("port", port);
 
   const server = http.createServer(app);
   server.listen(port);
   server.on("error", onError);
   server.on("listening", onListening);
-
-  function normalizePort(val) {
-    var port = parseInt(val, 10);
-    if (isNaN(port)) return val;
-    if (port >= 0) return port;
-    return false;
-  }
 
   function onError(error) {
     if (error.syscall !== "listen") throw error;
@@ -126,4 +156,12 @@ const passport = require("./middleware/passport");
     debug("Listening on " + bind);
     console.log("Express server running on http://localhost:" + port);
   }
-})();
+
+  return server;
+};
+
+if (require.main === module) {
+  start();
+}
+
+module.exports = { createApp };

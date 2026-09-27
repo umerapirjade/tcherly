@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import ReactPlayer from "react-player";
+import ReactPlayer from "react-player/lazy";
 import { useParams } from "react-router-dom";
 import { BrowserView, MobileView, withOrientationChange } from "react-device-detect";
 import Layout from "components/Layout";
 import { CgClose } from "react-icons/cg";
 import { useAuth } from "provider/auth";
 import Loader from "components/Loader";
-import { Button, Form, Modal } from "react-bootstrap";
+import { Alert, Button, Form, Modal } from "react-bootstrap";
+import { getErrorMessage } from "handler/api";
 import screenfull from "screenfull";
 
 import "../assets/styles/mobile-player.scss";
@@ -31,6 +32,24 @@ const playerOptions = {
 
 const playerStyles = {};
 
+// Analytics / log calls are fire-and-forget; failures must not surface as unhandled rejections.
+const ignoreError = () => {};
+
+function readSavedTimestamp(lessonId) {
+  try {
+    const value = parseInt(window.localStorage.getItem("lesson-" + lessonId) || "0", 10);
+    return Number.isNaN(value) ? 0 : value;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function saveTimestamp(lessonId, timestamp) {
+  try {
+    window.localStorage.setItem("lesson-" + lessonId, timestamp);
+  } catch (e) {}
+}
+
 function CourseIdLessonId() {
   const subs = useRef(true);
 
@@ -38,7 +57,8 @@ function CourseIdLessonId() {
   const { id } = useParams();
 
   const [lesson, setLesson] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     subs.current = true;
@@ -51,15 +71,24 @@ function CourseIdLessonId() {
   useEffect(() => {
     const fetchData = () => {
       setLoading(true);
+      setError(null);
 
+      // Public lesson view: only the lesson itself is used here (no bookmarks needed).
       request("GET", "/lessons/" + id)
         .then(({ data }) => {
-          if (data && data.success && subs.current) {
-            setLesson(data.lesson);
-            setLoading(false);
-          }
+          if (!subs.current) return;
+          if (data && data.success && data.lesson) setLesson(data.lesson);
+          else setError("This lesson could not be found.");
         })
-        .catch((err) => {});
+        .catch((err) => {
+          console.log(err);
+          if (!subs.current) return;
+          const status = err && err.response && err.response.status;
+          setError(status === 404 ? "This lesson could not be found." : getErrorMessage(err, "Couldn't load this lesson, please try again."));
+        })
+        .finally(() => {
+          if (subs.current) setLoading(false);
+        });
     };
 
     fetchData();
@@ -81,7 +110,15 @@ function CourseIdLessonId() {
         </Layout>
       </ProvideStudentAuth>
     );
-  return null;
+  return (
+    <Layout pageName="Feedback">
+      <div className="container py-5">
+        <Alert variant="danger" className="text-center">
+          {error || "Couldn't load this lesson."}
+        </Alert>
+      </div>
+    </Layout>
+  );
 }
 
 function MobilePlayer({ lesson, isLandscape, isPortrait }) {
@@ -116,16 +153,16 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
   const videoOnPlay = async () => {
     if (!beenPlayed) {
       if (playerRef.current) {
-        const ts = parseInt(localStorage.getItem("lesson-" + lesson._id || 0));
+        const ts = readSavedTimestamp(lesson._id);
         if (ts > 20) {
           setPlaying(true);
-          playerRef.current.seekTo(parseInt(ts), "seconds");
+          playerRef.current.seekTo(ts, "seconds");
         }
       }
     }
 
     // const _name = localStorage.getItem("debe-studentname");
-    request("POST", `/lessons/${lesson.id}/watched`, {}, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/watched`, {}, { withCredentials: true }).catch(ignoreError);
 
     let duration = 0;
 
@@ -137,7 +174,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
       }
     }
 
-    request("POST", `/lessons/${lesson.id}/log`, { action: "play", duration: duration, date_client: Date.now() }, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/log`, { action: "play", duration: duration, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
 
     setPlaying(true);
     if (isLandscape && scrollToTop.current) {
@@ -156,11 +193,11 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
     const difference = currentTimestamp - timestamp;
 
     if (difference >= 5) {
-      request("POST", `/lessons/${lesson.id}/log`, { action: "forward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true });
+      request("POST", `/lessons/${lesson.id}/log`, { action: "forward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
     }
 
     if (difference <= -5) {
-      request("POST", `/lessons/${lesson.id}/log`, { action: "backward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true });
+      request("POST", `/lessons/${lesson.id}/log`, { action: "backward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
     }
 
     setTimestamp(currentTimestamp);
@@ -171,7 +208,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
   };
 
   const videoOnReady = () => {
-    request("POST", `/lessons/${lesson.id}/log`, { action: "lesson_joined", date_client: Date.now() }, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/log`, { action: "lesson_joined", date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
   };
 
   const videoOnPause = () => {
@@ -186,7 +223,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
       }
     }
 
-    request("POST", `/lessons/${lesson.id}/log`, { action: "pause", duration: duration, date_client: Date.now() }, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/log`, { action: "pause", duration: duration, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
   };
 
   const videoOnBuffer = () => {
@@ -253,7 +290,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
 
   useEffect(() => {
     if (beenPlayed && timestamp > 0) {
-      localStorage.setItem("lesson-" + lesson._id, timestamp);
+      saveTimestamp(lesson._id, timestamp);
     }
   }, [timestamp, lesson, beenPlayed]);
 
@@ -281,7 +318,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
   // }, []);
 
   useEffect(() => {
-    refresh();
+    refresh().catch(ignoreError);
   }, [refresh]);
 
   if (!isLoggedIn)
@@ -642,7 +679,7 @@ function Player({ lesson }) {
 
   const videoOnPlay = () => {
     setPlaying(true);
-    request("POST", `/lessons/${lesson.id}/watched`, {}, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/watched`, {}, { withCredentials: true }).catch(ignoreError);
 
     let duration = 0;
 
@@ -654,10 +691,10 @@ function Player({ lesson }) {
       }
     }
 
-    request("POST", `/lessons/${lesson.id}/log`, { action: "play", duration: duration, date_client: Date.now() }, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/log`, { action: "play", duration: duration, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
   };
   const videoOnReady = () => {
-    request("POST", `/lessons/${lesson.id}/log`, { action: "lesson_joined", date_client: Date.now() }, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/log`, { action: "lesson_joined", date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
   };
 
   const videoOnPause = () => {
@@ -672,7 +709,7 @@ function Player({ lesson }) {
       }
     }
 
-    request("POST", `/lessons/${lesson.id}/log`, { action: "pause", duration: duration, date_client: Date.now() }, { withCredentials: true });
+    request("POST", `/lessons/${lesson.id}/log`, { action: "pause", duration: duration, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
   };
 
   /** @type { (seconds: number) => void } */
@@ -684,11 +721,11 @@ function Player({ lesson }) {
     const difference = currentTimestamp - timestamp;
 
     if (difference >= 5) {
-      request("POST", `/lessons/${lesson.id}/log`, { action: "forward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true });
+      request("POST", `/lessons/${lesson.id}/log`, { action: "forward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
     }
 
     if (difference <= -5) {
-      request("POST", `/lessons/${lesson.id}/log`, { action: "backward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true });
+      request("POST", `/lessons/${lesson.id}/log`, { action: "backward_seek", duration: playedSeconds, date_client: Date.now() }, { withCredentials: true }).catch(ignoreError);
     }
 
     setTimestamp(currentTimestamp);
@@ -772,7 +809,7 @@ function Player({ lesson }) {
   }, []);
 
   useEffect(() => {
-    refresh();
+    refresh().catch(ignoreError);
   }, [refresh]);
 
   // React.useEffect(() => {

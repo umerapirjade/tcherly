@@ -91,7 +91,7 @@ const Header = ({ minifiedNav = false, pageName = "Feedback", lessonName = "", c
 
   const handleUpgrade = (e) => {
     viewAdvanced();
-    request("PUT", "/auth/upgrade", {});
+    request("PUT", "/auth/upgrade", {}).catch((err) => console.log(err));
     handleCloseUpgradeModal();
   };
 

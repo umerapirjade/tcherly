@@ -29,7 +29,7 @@ function ActionTracker() {
             action: values.action,
             future_action: values.future_action,
           },
-        });
+        }).catch((err) => console.log(err));
         setCurrentBookmark((cb) => ({ ...cb, actions: [...cb.actions, values] }));
       } else {
         setActions((a) => [...a, values]);
@@ -115,7 +115,7 @@ function ActionTracker() {
 
           request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-actions`, {
             actions: result,
-          });
+          }).catch((err) => console.log(err));
 
           return { ...cb, actions: result };
         });
@@ -150,7 +150,7 @@ function ActionTracker() {
 
         request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-actions`, {
           actions: result,
-        });
+        }).catch((err) => console.log(err));
 
         return { ...cb, actions: result };
       });

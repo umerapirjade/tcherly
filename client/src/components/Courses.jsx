@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Form, Button } from "react-bootstrap";
+import { Form, Button, Alert } from "react-bootstrap";
 import { useHistory } from "react-router-dom";
 
 import { useAuth } from "provider/auth";
 import Loader from "./Loader";
+import { getErrorMessage } from "handler/api";
 
 function Courses() {
   const { request } = useAuth();
@@ -16,6 +17,8 @@ function Courses() {
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
   const [selectedType, setSelectedType] = useState("");
+  const [error, setError] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     subscribed.current = true;
@@ -27,18 +30,20 @@ function Courses() {
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
 
     request("GET", "/courses")
       .then(({ data }) => {
+        if (!subscribed.current) return;
         if (data && data.success) {
-          if (subscribed.current) {
-            setCourses(data.courses);
-            setLoading(false);
-          }
+          setCourses(Array.isArray(data.courses) ? data.courses : []);
+        } else {
+          setError("Couldn't load your courses, please refresh the page.");
         }
       })
       .catch((err) => {
         console.log(err);
+        if (subscribed.current) setError(getErrorMessage(err, "Couldn't load your courses, please refresh the page."));
       })
       .finally(() => {
         if (subscribed.current) setLoading(false);
@@ -70,17 +75,30 @@ function Courses() {
   };
 
   const createCourse = () => {
+    const name = newCourse.trim();
+    if (!name) {
+      setError("Please select a course or enter a name for a new one.");
+      return;
+    }
+    if (creating) return;
+
+    setError(null);
+    setCreating(true);
+
     request("POST", "/courses/", {
-      name: newCourse,
+      name,
     })
       .then(({ data }) => {
-        if (data && data.success) {
-          const course_id = data.course && data.course._id;
-          if (course_id) history.push("/c/" + course_id);
-        }
+        const course_id = data && data.success && data.course && data.course._id;
+        if (course_id) history.push("/c/" + course_id);
+        else if (subscribed.current) setError((data && data.message) || "Couldn't create the course, try again.");
       })
       .catch((err) => {
         console.log(err);
+        if (subscribed.current) setError(getErrorMessage(err, "Couldn't create the course, try again."));
+      })
+      .finally(() => {
+        if (subscribed.current) setCreating(false);
       });
   };
 
@@ -110,7 +128,7 @@ function Courses() {
               <Form.Control as="select" value={course} onChange={handleChangeCourse}>
                 <option value="-1">Choose one</option>
                 {courses.map((o, k) => (
-                  <option key={k} value={k}>
+                  <option key={o._id || k} value={k}>
                     {o.name}
                   </option>
                 ))}
@@ -124,8 +142,15 @@ function Courses() {
           <Form.Control onKeyDown={handleInputEnter} placeholder="Enter a name" value={newCourse} onChange={handleChangeNewCourse} />
           <Form.Text></Form.Text>
         </Form.Group>
+        {error && (
+          <Alert variant="danger" className="text-center">
+            {error}
+          </Alert>
+        )}
         <div className="text-center">
-          <Button onClick={onNext}>Next</Button>
+          <Button disabled={creating} onClick={onNext}>
+            Next
+          </Button>
         </div>
       </div>
     </div>

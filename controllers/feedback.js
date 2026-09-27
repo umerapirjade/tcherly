@@ -1,13 +1,26 @@
-const fs = require("fs");
-const path = require("path");
 const Feedback = require("../database/models/feedback");
 const Lesson = require("../database/models/lesson");
 const UniqueId = require("../database/models/unique-id");
 const Student = require("../database/models/student");
 const ExcelJS = require("exceljs");
+const { feedbackTypes } = require("../data/data");
+const { createSheetNamer, handleExportError } = require("../utils/excel");
 
-const { getClientIp, setUUIDCookie, isValidObjectId } = require("../handlers/misc");
-const { isBefore } = require("date-fns");
+const FEEDBACK_KINDS = ["difficult", "easy", "boring", "engaging"];
+const MAX_OTHER_MESSAGE_LENGTH = 1000;
+
+const toValidDate = (value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const { getClientIp, setUUIDCookie, isValidObjectId, sendError } = require("../handlers/misc");
+
+// Lessons created before this date ignore the minimum-feedback threshold (legacy behaviour).
+const THRESHOLD_CHANGE_DATE = new Date("2021-10-13T20:15:59.753+00:00");
+// Same semantics as date-fns isBefore: false for missing/invalid dates.
+const isBeforeThresholdChange = (date) => new Date(date).getTime() < THRESHOLD_CHANGE_DATE.getTime();
 
 /**
  * Difficult
@@ -48,7 +61,7 @@ const { isBefore } = require("date-fns");
 
 const generateStudentMinuteData = (studentSecondData, lectureLength = 0, { min, max }, seconds = 0, lessonCreatedAt) => {
   if (Array.isArray(studentSecondData)) {
-    const ignoreThreshold = isBefore(lessonCreatedAt, new Date("2021-10-13T20:15:59.753+00:00"));
+    const ignoreThreshold = isBeforeThresholdChange(lessonCreatedAt);
     const minThreshold = Math.floor((lectureLength * 60) / 120);
     const maxThreshold = (seconds || lectureLength * 60) - minThreshold;
     return studentSecondData.map((student) => {
@@ -605,8 +618,7 @@ const generateVennFeedback = (classFeedback) => {
 const watchedVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
-    const uuid = setUUIDCookie(req, res);
+    setUUIDCookie(req, res);
 
     const student_id = req.user._id;
 
@@ -627,92 +639,112 @@ const watchedVideo = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    return res.send(500).send({
+    return res.status(500).send({
       success: false,
       message: "Internal server error",
     });
   }
 };
 
+// Upper bound for feedback timestamps when the lesson's duration is unknown
+const MAX_TIMESTAMP_SECONDS = 24 * 60 * 60;
+
+/** Lesson duration in seconds (from `seconds`, else `minutes`), or null when unknown. */
+const lessonDurationSeconds = (lesson) => {
+  if (lesson && Number.isFinite(lesson.seconds) && lesson.seconds > 0) return lesson.seconds;
+  if (lesson && Number.isFinite(lesson.minutes) && lesson.minutes > 0) return lesson.minutes * 60;
+  return null;
+};
+
+/** Clamps a (finite) video timestamp to [0, lesson duration] (or [0, 24h] if the duration is unknown). */
+const clampTimestamp = (seconds, lesson) => {
+  const max = lessonDurationSeconds(lesson) || MAX_TIMESTAMP_SECONDS;
+  return Math.min(Math.max(seconds, 0), max);
+};
+
 const recordFeedback = async (req, res) => {
-  const { timestamp, feedback, feedback_type, other_message = "", date_client } = req.body;
+  try {
+    const { timestamp, feedback, feedback_type, other_message = "", date_client } = req.body;
+    const { id } = req.params;
 
-  const { id } = req.params;
-  // const uuid = setUUIDCookie(req, res);
+    // Only allow known feedback kinds as keys (prevents mass-assignment of arbitrary fields)
+    if (typeof feedback !== "string" || !FEEDBACK_KINDS.includes(feedback)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid feedback",
+      });
+    }
 
-  const student_id = req.user._id;
-  const student = await Student.findOne({ _id: student_id });
+    // A missing timestamp is accepted (stored without `seconds`, like before) so clicks aren't lost;
+    // anything provided must be a finite number and is clamped to the lesson's length below.
+    const hasTimestamp = !(timestamp === undefined || timestamp === null || timestamp === "");
+    const rawSeconds = hasTimestamp ? Number(timestamp) : undefined;
+    if (hasTimestamp && (typeof timestamp === "boolean" || typeof timestamp === "object" || !Number.isFinite(rawSeconds))) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid timestamp",
+      });
+    }
 
-  if (student) {
-    // const uniqueId = await UniqueId.findOne({ uuid: uuid });
-    // if (!uniqueId) {
-    //   await new UniqueId({
-    //     uuid,
-    //     name: student.name || req.body.name,
-    //   }).save();
-    // }
+    const isNone = typeof feedback_type === "undefined" || feedback_type === null || feedback_type === "";
+    const isOther = feedback_type === "other";
+    if (!isNone && !isOther && !(typeof feedback_type === "string" && Object.prototype.hasOwnProperty.call(feedbackTypes[feedback], feedback_type))) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid feedback type",
+      });
+    }
+
+    const student_id = req.user._id;
+    const student = await Student.findOne({ _id: student_id });
+
+    if (!student) {
+      return res.status(401).send({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
 
     const query = {};
     if (isValidObjectId(id)) query._id = id;
     else query.id = id;
 
-    try {
-      const lesson = await Lesson.findOneAndUpdate(query, { $addToSet: { watched: student._id } }, { new: true });
+    const lesson = await Lesson.findOneAndUpdate(query, { $addToSet: { watched: student._id } }, { new: true });
 
-      if (lesson) {
-        const newFeedback = new Feedback({
-          seconds: timestamp,
-          [feedback]: true,
-          // unique_id: uuid,
-          lesson: lesson._id,
-          ip: getClientIp(req),
-          date_client,
-          student_id,
-        });
-
-        if (typeof feedback_type === "undefined") {
-          newFeedback.details.none = true;
-        } else if (feedback_type === "other") {
-          newFeedback.details.other = other_message;
-        } else {
-          newFeedback.details[feedback] = feedback_type;
-        }
-
-        await newFeedback.save();
-
-        return res.send({
-          success: true,
-          message: "Recorded",
-          newFeedback,
-        });
-      }
+    if (!lesson) {
       return res.send({
         success: false,
         message: "Not recorded",
       });
-    } catch (error) {
-      console.log(error);
-      return res.status(500).send({
-        success: false,
-        message: "Internal server error",
-      });
     }
-  }
 
-  return res.status(401).send({
-    success: false,
-    message: "Unauthorized",
-  });
-};
+    const newFeedback = new Feedback({
+      seconds: hasTimestamp ? clampTimestamp(rawSeconds, lesson) : undefined,
+      [feedback]: true,
+      lesson: lesson._id,
+      ip: getClientIp(req),
+      date_client: toValidDate(date_client),
+      student_id,
+    });
 
-const writeFile = (name = "", data = {}) => {
-  if (process.env.NODE_ENV === "production") return;
-  if (!name) throw new Error("FS: Please provide a file name");
-  const dirPath = path.join(__dirname, "../../output");
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath);
+    if (isNone) {
+      newFeedback.details.none = true;
+    } else if (isOther) {
+      newFeedback.details.other = String(other_message || "").slice(0, MAX_OTHER_MESSAGE_LENGTH);
+    } else {
+      newFeedback.details[feedback] = feedback_type;
+    }
+
+    await newFeedback.save();
+
+    return res.send({
+      success: true,
+      message: "Recorded",
+      newFeedback,
+    });
+  } catch (error) {
+    return sendError(res, error);
   }
-  fs.writeFileSync(path.join(dirPath, name), JSON.stringify(data));
 };
 
 const studentColumns = [
@@ -735,11 +767,40 @@ const classFeedbackColumns = [
   // Add details
 ];
 
+const RESERVED_SHEET_NAMES = ["CLASS FEEDBACK", "NO FEEDBACK STUDENTS"];
+
 const noFeedbackStudentsColumns = [
   { header: "Unique ID", key: "uuid", width: 32 },
   { header: "Name", key: "name", width: 40 },
   { header: "Date", key: "createdAt" },
 ];
+
+/**
+ * Batch-loads display info (name, createdAt) for a list of student identifiers, which are
+ * either Student ObjectIds or legacy UniqueId uuids. Returns a Map keyed by the identifier string.
+ */
+const loadStudentInfo = async (identifiers = []) => {
+  const ids = Array.from(new Set(identifiers.map((i) => String(i))));
+  const objectIds = ids.filter((i) => isValidObjectId(i));
+  const uuids = ids.filter((i) => !isValidObjectId(i));
+
+  const [students, uniqueIds] = await Promise.all([
+    objectIds.length ? Student.find({ _id: { $in: objectIds } }).select("_id name createdAt").lean() : [],
+    uuids.length ? UniqueId.find({ uuid: { $in: uuids } }).select("uuid name createdAt").lean() : [],
+  ]);
+
+  const info = new Map();
+  students.forEach((st) => info.set(String(st._id), st));
+  uniqueIds.forEach((u) => {
+    if (!info.has(u.uuid)) info.set(u.uuid, u);
+  });
+  return info;
+};
+
+const safeFilenamePart = (value = "") =>
+  String(value)
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .slice(0, 100) || "lesson";
 
 const exportFeedbackForLesson = async (req, res) => {
   try {
@@ -756,7 +817,7 @@ const exportFeedbackForLesson = async (req, res) => {
       const minThreshold = Math.floor(lectureLength / 120);
       const maxThreshold = lectureLength - minThreshold;
 
-      const ignoreThreshold = isBefore(lesson.createdAt, new Date("2021-10-13T20:15:59.753+00:00"));
+      const ignoreThreshold = isBeforeThresholdChange(lesson.createdAt);
 
       const feedbacks = await Feedback.find({ lesson: lesson._id }).sort("seconds").exec();
       const studentWiseObject = {};
@@ -798,35 +859,23 @@ const exportFeedbackForLesson = async (req, res) => {
       const studentMinuteData = generateStudentMinuteData(studentArray, lessonLength, noRange, lesson.seconds, lesson.createdAt);
       const classFeedback = generateClassFeedback(studentMinuteData, lessonLength, noRange, lesson.seconds);
 
-      // console.log(studentArray[0], studentMinuteData[0], classFeedback[0]);
-      const watched = lesson.watched;
-      const providedFeedback = [];
+      const watched = (lesson.watched || []).map((w) => String(w));
+      const providedFeedback = new Set(studentArray.map((s) => String(s.student)));
+      const noFeedbackStudentsArray = watched.filter((s) => !providedFeedback.has(s));
+
+      // One query per collection instead of one per student
+      const studentInfo = await loadStudentInfo([...providedFeedback, ...noFeedbackStudentsArray]);
+
+      const nextSheetName = createSheetNamer(RESERVED_SHEET_NAMES);
       let idS = 0;
       while (idS < studentArray.length) {
         const secondData = studentArray[idS];
-        providedFeedback.push(secondData.student);
 
-        const isStudentIdObjectId = isValidObjectId(secondData.student);
+        const uid = studentInfo.get(String(secondData.student));
+        const studentName = uid && typeof uid.name === "string" ? uid.name.trim() : "";
 
-        const uid = await (isStudentIdObjectId ? Student.findOne({ _id: secondData.student }) : UniqueId.findOne({ uuid: secondData.student }));
-
-        // const studentSheetName
-
-        const baseWorksheetName = uid
-          ? String(uid.name || "")
-              .replace(/\s/g, "_")
-              .replace(/\W/g, "")
-              .replace(/_/g, " ")
-              .toUpperCase()
-          : "Student " + (idS + 1);
-
-        let worksheetName = baseWorksheetName;
-
-        let wI = 1;
-        while (workbook.getWorksheet(worksheetName)) {
-          worksheetName = baseWorksheetName + "-" + wI;
-          wI += 1;
-        }
+        // Excel sheet names: max 31 chars, unique (case-insensitive), must not clash with the summary sheets
+        const worksheetName = nextSheetName(studentName.toUpperCase(), "Student " + (idS + 1));
 
         const worksheet = workbook.addWorksheet(worksheetName);
 
@@ -847,7 +896,7 @@ const exportFeedbackForLesson = async (req, res) => {
 
             if (idSF === 0) {
               r.student = secondData.student;
-              r.student_name = baseWorksheetName;
+              r.student_name = studentName || worksheetName;
             }
 
             worksheet.addRow(r);
@@ -879,16 +928,13 @@ const exportFeedbackForLesson = async (req, res) => {
 
       const noFeedbackStudentsWorksheet = workbook.addWorksheet("NO FEEDBACK STUDENTS");
       noFeedbackStudentsWorksheet.columns = noFeedbackStudentsColumns;
-      const noFeedbackStudentsArray = watched.filter((s) => !providedFeedback.includes(s));
-
       const rowsToAdd = [];
 
       let idNF = 0;
       while (idNF < noFeedbackStudentsArray.length) {
         const nfid = noFeedbackStudentsArray[idNF];
 
-        const isStudentIdObjectId = isValidObjectId(nfid);
-        const nfStudent = await (isStudentIdObjectId ? Student.findOne({ _id: nfid }) : UniqueId.findOne({ uuid: nfid }));
+        const nfStudent = studentInfo.get(nfid);
 
         rowsToAdd.push({
           name: nfStudent ? nfStudent.name : null,
@@ -905,21 +951,29 @@ const exportFeedbackForLesson = async (req, res) => {
 
       noFeedbackStudentsWorksheet.addRows(rowsToAdd.map((r) => ({ ...r, name: r.name || "Not found" })));
 
-      const filename = path.resolve(__dirname, "../data/generated", `lesson-${id}-${Date.now()}.xlsx`);
-      await workbook.xlsx.writeFile(filename);
-
-      return res.sendFile(filename);
+      // Stream the workbook directly; nothing is written to disk
+      const filename = `lesson-${safeFilenamePart(lesson.id || id)}-feedback-export.xlsx`;
+      res.status(200);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      await workbook.xlsx.write(res);
+      return res.end();
     }
+
+    return res.status(404).send({ success: false, message: "Lesson not found" });
   } catch (error) {
-    console.log(error);
-    return res.status(500).send({ message: "Internal server error" });
+    return handleExportError(res, error);
   }
 };
 
 const getAllFeedbackForLesson = async (req, res) => {
-  const { id } = req.params;
-  const query = isValidObjectId(id) ? { _id: id } : { id };
   try {
+    const { id } = req.params;
+    if (!req.user) {
+      return res.status(401).send({ success: false, message: "Unauthorized" });
+    }
+    // Teacher dashboard: only the owner's lesson (also enforced by verifyResourceIsForUser on the route)
+    const query = isValidObjectId(id) ? { _id: id, user: req.user._id } : { id, user: req.user._id };
     const lesson = await Lesson.findOne(query).populate("bookmarks current_bookmark").exec();
     if (lesson) {
       const feedbacks = await Feedback.find({ lesson: lesson._id }).sort({ createdAt: 1 }).exec();
@@ -946,20 +1000,25 @@ const getAllFeedbackForLesson = async (req, res) => {
       // writeFile("studentSecondArray.json", studentSecondArray);
       const lessonLength = lesson.minutes || Math.ceil(lesson.seconds / 60);
 
+      const toInt = (value, fallback) => {
+        const n = parseInt(value, 10);
+        return Number.isFinite(n) ? n : fallback;
+      };
+
       let min = 1;
       if (req.query.min) {
-        min = parseInt(req.query.min || 0);
+        min = toInt(req.query.min, 0);
       } else {
         if (lesson.current_bookmark) {
-          min = lesson.current_bookmark.time_from;
+          min = toInt(lesson.current_bookmark.time_from, min);
         }
       }
       let max = lessonLength;
       if (req.query.max) {
-        max = parseInt(req.query.max || 0);
+        max = toInt(req.query.max, lessonLength);
       } else {
         if (lesson.current_bookmark) {
-          max = lesson.current_bookmark.time_to;
+          max = toInt(lesson.current_bookmark.time_to, max);
         }
       }
 
@@ -1017,7 +1076,7 @@ const getAllFeedbackForLesson = async (req, res) => {
         },
       });
     }
-    return res.send({
+    return res.status(404).send({
       success: false,
       message: "Lesson not found",
     });
@@ -1029,8 +1088,6 @@ const getAllFeedbackForLesson = async (req, res) => {
     });
   }
 };
-
-const createLessonSession = (req, res) => {};
 
 module.exports = {
   recordFeedback,

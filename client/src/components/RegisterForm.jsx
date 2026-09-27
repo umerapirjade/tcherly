@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useHistory } from "react-router-dom";
 
-import { Form, InputGroup, Button } from "react-bootstrap";
+import { Form, InputGroup, Button, Alert } from "react-bootstrap";
 import PhoneNumberInput, { isPossiblePhoneNumber } from "react-phone-number-input";
 import { useFormik } from "formik";
 import * as Yup from "yup";
@@ -38,7 +38,7 @@ const featureOptions = [
 const registerValidationSchema = Yup.object({
   fullname: Yup.string().required("Fullname is required"),
   email: Yup.string().email("Email address is invalid").required("Email address is required"),
-  password: Yup.string().min(8, "Password must be atleast 8 characters").max(64, "Password must not be over 64 characters").required("Password is required"),
+  password: Yup.string().min(8, "Password must be at least 8 characters").max(32, "Password must be at most 32 characters").required("Password is required"),
   organization: Yup.string().min(3).optional(),
   mobile_number: Yup.string().optional(),
   contact_for_research: Yup.string().oneOf(["yes", "no"]).required(),
@@ -58,10 +58,20 @@ function RegisterForm() {
   const formik = useFormik({
     initialValues: defaultForm,
     validationSchema: registerValidationSchema,
-    onSubmit: (values, { setFieldError }) => {
-      register({ ...values, mode }).catch(() => {
-        setFieldError("email", "Account already exists, please use a different email.");
-      });
+    onSubmit: (values, { setFieldError, setStatus }) => {
+      setStatus(null);
+      return register({ ...values, mode })
+        .then((ok) => {
+          if (!ok) setStatus({ registerForm: "Registration failed, please try again." });
+        })
+        .catch((err) => {
+          const message = (err && err.message) || "";
+          if (err && (err.status === 401 || err.status === 409 || /exist/i.test(message))) {
+            setFieldError("email", "Account already exists, please use a different email.");
+          } else {
+            setStatus({ registerForm: message || "Registration failed, please try again." });
+          }
+        });
     },
     validateOnBlur: true,
   });
@@ -340,6 +350,11 @@ function RegisterForm() {
                   <Form.Text>{formik.values.contact_for_research === "yes" ? "Research team will get in touch with you." : formik.values.contact_for_research === "no" && "You won't be contacted."}</Form.Text>
                 )}
               </Form.Group>
+              {formik.status && formik.status.registerForm && (
+                <Alert variant="danger" className="text-center">
+                  {formik.status.registerForm}
+                </Alert>
+              )}
               <div className="text-center pt-3">
                 <Button variant="primary" type="submit">
                   Register

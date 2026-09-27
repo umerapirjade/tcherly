@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Form, InputGroup, Button, Spinner, Alert } from "react-bootstrap";
-import { Link, useHistory } from "react-router-dom";
+import { Link, useHistory, useLocation } from "react-router-dom";
 import { useAuth } from "provider/auth";
+import { safeRedirectPath } from "handler/api";
 
 import { Formik } from "formik";
 import * as Yup from "yup";
@@ -19,6 +20,7 @@ function LoginForm() {
 
   const { login } = useAuth();
   const history = useHistory();
+  const location = useLocation();
 
   useEffect(() => {
     subscribed.current = true;
@@ -37,11 +39,9 @@ function LoginForm() {
       const [error] = await login(values.email, values.password, values.rememberMe);
 
       if (subscribed.current) {
-        console.log({ error });
-
         if (error) setStatus({ loginForm: error });
         else {
-          history.push("/dashboard");
+          history.push(safeRedirectPath(location.state && location.state.from));
         }
       }
     } catch (error) {

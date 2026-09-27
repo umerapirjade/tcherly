@@ -16,6 +16,7 @@ This guide covers deploying **Tcherly** (DEBE) to a production Linux server (e.g
   - [5. Process Management with PM2](#5-process-management-with-pm2)
   - [6. Configure Nginx Reverse Proxy & SSL](#6-configure-nginx-reverse-proxy--ssl)
 - [Method 2: Automated Deployment via PM2 Deploy](#method-2-automated-deployment-via-pm2-deploy)
+- [Upgrading from the old version (Node 16 / Mongoose 5)](#upgrading-from-the-old-version-node-16--mongoose-5)
 - [Database Setup & Backups](#database-setup--backups)
 - [Operations & Maintenance](#operations--maintenance)
 - [Troubleshooting](#troubleshooting)
@@ -48,9 +49,9 @@ Internet (HTTPS :443)
 
 - **Operating System**: Ubuntu 20.04 LTS / 22.04 LTS, Debian 11+, or similar Linux distribution.
 - **Hardware**: Minimum 1 vCPU, 2 GB RAM (at least 1 GB swap recommended if building on a small instance).
-- **Node.js**: Node.js `v14.x` or `v16.x` LTS (or Node `v18.x`+ with `NODE_OPTIONS=--openssl-legacy-provider`).
+- **Node.js**: Node.js **`v24.x` LTS** (`engines.node >= 24` in `package.json`; `.node-version` pins `24`). Older Node versions are not supported (the PM2 post-deploy hook aborts on Node < 24).
 - **Process Manager**: PM2.
-- **Database**: MongoDB v4.4+ (local instance or managed Atlas cluster).
+- **Database**: MongoDB 6.0+ recommended (CI runs against `mongo:7`, the local test container is `mongo:6`), local or managed Atlas cluster. The app uses Mongoose 8 / MongoDB Node driver 6.x; check the driver compatibility table before using an older server.
 - **Reverse Proxy**: Nginx with Let's Encrypt SSL certificate.
 
 ---
@@ -66,24 +67,22 @@ Connect to your server and install Node.js, Yarn, PM2, and Nginx:
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl git nginx build-essential
 
-# Install Node.js (Node 16 LTS recommended for Webpack 4 / CRA compatibility)
-curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+# Install Node.js 24 LTS (or use fnm/nvm: `fnm install 24 && fnm default 24`)
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 
 # Install Yarn and PM2 globally
 sudo npm install -g yarn pm2
 
 # Verify versions
-node -v    # v16.x
+node -v    # v24.x
 yarn -v    # 1.22.x
-pm2 -v
+pm2 -v     # 7.x (the repo's devDependency is pm2 ^7; any recent global pm2 works)
 ```
 
-> **Note for Node.js 18+ / 20+**: If your server uses Node 18 or newer, set the legacy OpenSSL flag in your shell profile before building the client:
-> ```bash
-> echo 'export NODE_OPTIONS=--openssl-legacy-provider' >> ~/.bashrc
-> source ~/.bashrc
-> ```
+No `NODE_OPTIONS=--openssl-legacy-provider` or `SKIP_PREFLIGHT_CHECK` is needed any more: the client
+is built with Vite and the backend runs natively on Node 24. `bcrypt` ships prebuilt Node 24
+binaries; `build-essential` is only needed if a prebuild is unavailable for your platform.
 
 ---
 
@@ -96,11 +95,11 @@ cd ~
 git clone https://github.com/IITB-EdTech/tcherly.git
 cd tcherly
 
-# Install root dependencies
-yarn
+# Install root dependencies (exact versions from yarn.lock)
+yarn install --frozen-lockfile
 
-# Install client dependencies
-yarn install:c
+# Install client dependencies (the Vite build needs its devDependencies)
+yarn --cwd client install --frozen-lockfile --production=false
 ```
 
 ---
@@ -121,12 +120,20 @@ HOSTNAME=0.0.0.0
 PORT=3000
 NODE_ENV=production
 
-# Database (Replace with your local URI or MongoDB Atlas connection string)
-DB_URI="mongodb://localhost:27017/debe"
-# Or if using MongoDB Atlas:
-# DB_PROD="mongodb+srv://<user>:<password>@cluster.mongodb.net/debe?retryWrites=true&w=majority"
+# Public URL (required in production: used in password-reset links)
+APP_URL="https://yourdomain.com"
+# nginx on the same host → keep the default; otherwise set the proxy address/hop count
+TRUST_PROXY=loopback
+# Only needed if the API is called cross-origin; same-origin SPA needs no CORS
+CORS_ORIGINS=
 
-# Security Secrets (MUST be unique, long random strings)
+# Database (local URI or MongoDB Atlas connection string; only DB_URI is read)
+DB_URI="mongodb://localhost:27017/debe"
+# DB_URI="mongodb+srv://<user>:<password>@cluster.mongodb.net/debe?retryWrites=true&w=majority"
+DB_CONNECT_TIMEOUT=10000
+
+# Security Secrets (MUST be unique random strings of at least 32 characters, or the server refuses to start)
+# node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 SESSION_EXPIRATION=604800000
 SESSION_SECRET="generate_a_cryptographically_secure_random_session_secret_here"
 
@@ -137,9 +144,11 @@ JWT_SECRET="generate_a_cryptographically_secure_random_jwt_secret_here"
 # YouTube Data API Key (Required for automatic lecture duration lookup)
 GOOGLE_API_KEY="your_google_cloud_api_key_with_youtube_v3_enabled"
 
-# Mailgun Credentials (Required for password-reset emails)
+# Mailgun Credentials (Required for password-reset emails in production)
 MG_APIKEY="your_mailgun_api_key"
 MG_DOMAIN="your_mailgun_verified_domain"
+# EU-region Mailgun domains only:
+# MG_URL="https://api.eu.mailgun.net"
 ```
 
 Configure the client environment:
@@ -147,22 +156,48 @@ Configure the client environment:
 cp client/.env.example client/.env
 nano client/.env
 ```
-Configure the client API endpoint (in production, the client automatically resolves to `/api/`):
-```ini
-REACT_APP_API_URL="/api"
-```
+Production builds always call the same-origin `/api/`, so `client/.env` needs no production values.
+`VITE_API_URL` / `VITE_MOBILE_API_URL` only affect the development server (they replace the old
+`REACT_APP_API_URL` / `REACT_APP_MOBILE_API_URL`; `SKIP_PREFLIGHT_CHECK` is gone).
 
 ---
 
 ### 4. Build the Frontend
 
-Compile the React frontend into static production assets:
+Compile the React frontend into static production assets (Vite; `yarn build` = `cd client && yarn build` = `vite build`):
 
 ```bash
 yarn build
 ```
 
 This generates the static files in `client/build/`, which Express automatically serves when `NODE_ENV=production`.
+
+---
+
+### 4a. Pre-deploy: Lesson Slug Migration (existing databases)
+
+Lesson slugs (`lesson.id`, used in student links `/l/<slug>`) now use a **partial** unique index
+(only string slugs are indexed) instead of the old sparse one. Before (re)starting a new release
+against an existing database, check for lessons with a missing/`null` slug or duplicated slugs:
+
+```bash
+# Dry run: only reports problems, changes nothing (uses DB_URI from .env)
+yarn migrate:slugs
+
+# Back up first (see "Database Setup & Backups"), then fix them:
+yarn migrate:slugs --apply
+```
+
+With `--apply` the script gives slug-less lessons a new slug and, for each duplicated slug, keeps it
+on the **oldest** lesson and re-slugs the others. It prints an `old -> new` mapping: student links
+using a changed slug stop working, so send the new links to the affected teachers. It also replaces
+an outdated `id_1` index with the new partial unique index.
+
+If this step is skipped and conflicting data exists, the server still starts, but logs
+`[db] INDEX BUILD FAILED for model "lesson"` at startup and slug uniqueness is not enforced until the
+migration is run and the server restarted.
+
+The script is idempotent; running it again when everything is fine reports zero problems.
 
 ---
 
@@ -293,10 +328,55 @@ When changes are pushed to GitHub `origin/main`, trigger an automated deployment
 yarn deploy
 ```
 
-PM2 SSHs into the remote server, pulls the latest commits, and runs the configured post-deploy hook:
+> Run the [lesson slug migration](#4a-pre-deploy-lesson-slug-migration-existing-databases) on the server (dry run, then `--apply`) before the first deploy of this release.
+
+PM2 SSHs into the remote server, pulls the latest commits, and runs the configured post-deploy hook
+(`ecosystem.config.js`):
 ```bash
-yarn && yarn install:c && yarn build && pm2 startOrRestart ecosystem.config.js --env production --update-env
+node -e "<abort unless Node >= 24>" \
+  && yarn install --frozen-lockfile \
+  && yarn --cwd client install --frozen-lockfile --production=false \
+  && yarn build \
+  && pm2 startOrRestart ecosystem.config.js --env production --update-env
 ```
+The pm2 app runs `server.js` directly (previously `yarn start`), with `NODE_ENV=production` and the
+variables from `.env`. The remote host's default `node` (the one in pm2's non-interactive SSH `PATH`)
+must be Node 24.
+
+---
+
+## Upgrading from the old version (Node 16 / Mongoose 5)
+
+This release moves the backend from Node 16 to **Node 24 LTS** and upgrades every dependency
+(Mongoose 5 → 8, Express 4.17 → 4.22, jsonwebtoken 9, passport 0.7, bcrypt 6, connect-mongo 6,
+mailgun.js, express-rate-limit 8, ...). The client moved from Create React App to Vite. Checklist:
+
+1. **Node 24 on the server** (and in pm2's `PATH`), then a clean install: `rm -rf node_modules client/node_modules`
+   and reinstall (native `bcrypt` must match the Node ABI). Run `pm2 update` afterwards so the pm2 daemon itself
+   runs on Node 24. **MongoDB 4.2 or newer is required** (MongoDB Node driver 6.x); older servers make the app exit at startup.
+2. **Back up the database**, then run the [lesson slug migration](#4a-pre-deploy-lesson-slug-migration-existing-databases)
+   (`yarn migrate:slugs`, then `yarn migrate:slugs --apply`) before starting the new release.
+3. **Secrets**: `JWT_SECRET` and `SESSION_SECRET` are now required and must be **at least 32 characters**
+   (the server refuses to start otherwise, and also rejects the `.env.example` placeholders). Generate new ones.
+4. **Old access tokens are invalid**: JWTs signed with the old secret, or without the `type` claim the new
+   server requires (`user`/`student`/`researcher`), are rejected with 401 (HS256 only). Clients silently get a new
+   token through their refresh-token cookie when it is still valid; otherwise users simply sign in again.
+   Announce a possible one-time logout. **Researchers are always logged out once**: their refresh tokens used to be
+   stored under the `user` field and are no longer accepted, so they must sign in again.
+5. **Mail is required in production**: set `MG_APIKEY` + `MG_DOMAIN` (and `MG_URL` for EU domains). Without them the
+   server logs an error at startup and password-reset mails fail. `MAIL_TRANSPORT=log` prints mails to the log instead
+   (only for debugging: reset links end up in the log).
+6. **New environment variables**: `APP_URL` (required in production), `CORS_ORIGINS`, `TRUST_PROXY`,
+   `RATE_LIMIT_DISABLED`, `MAIL_TRANSPORT`, `MG_URL`, `DB_CONNECT_TIMEOUT` — see [ENVIRONMENT.md](ENVIRONMENT.md).
+   `DB_PROD` is not read; put the Atlas URI in `DB_URI`.
+7. **Client env**: rename `REACT_APP_API_URL` / `REACT_APP_MOBILE_API_URL` to `VITE_API_URL` / `VITE_MOBILE_API_URL`
+   in `client/.env` (development only) and drop `SKIP_PREFLIGHT_CHECK`.
+8. **Recreate the pm2 app once**: `pm2 startOrRestart` keeps the script of an app that already exists, so the switch from
+   `yarn start` to running `server.js` directly only takes effect after
+   `pm2 delete debe && pm2 start ecosystem.config.js --env production && pm2 save` on the server (one time).
+9. Existing password hashes (`$2b$`/`$2a$`, cost 13) keep working with bcrypt 6; nothing to migrate.
+9. The `sessions` collection (express-session via connect-mongo, now 6.x reusing the mongoose connection) is
+   not used for authentication (all auth is JWT + refresh-token cookie); old session documents can be left alone.
 
 ---
 
@@ -378,15 +458,22 @@ pm2 set pm2-logrotate:compress true
    - Check PM2 error logs: `pm2 logs debe --err`.
 
 3. **Build Fails with `JavaScript heap out of memory`**:
-   - React compilation requires sufficient memory. Add swap if running on a 1GB/2GB instance:
+   - The Vite build needs far less memory than the old CRA/Webpack 4 build, but small instances may still need swap. Add swap if running on a 1GB/2GB instance:
      ```bash
      sudo fallocate -l 2G /swapfile
      sudo chmod 600 /swapfile
      sudo mkswap /swapfile
      sudo swapon /swapfile
      ```
-   - Alternatively, pass `--max_old_space_size=1500` to the build script.
+   - Alternatively, run the build with `NODE_OPTIONS=--max-old-space-size=1500 yarn build`.
 
 4. **Mailgun / Password Reset Not Delivering**:
-   - Check `MG_APIKEY` and `MG_DOMAIN` in `.env`.
+   - Check `MG_APIKEY` and `MG_DOMAIN` in `.env` (and `MG_URL=https://api.eu.mailgun.net` for EU-region domains).
+   - Look for `[mail]` lines in `pm2 logs debe`: the startup check reports missing configuration, and delivery failures are logged (without the message body).
    - Verify that your domain DNS records (SPF, DKIM, MX) are active in Mailgun.
+
+5. **Server exits right after start with `Failed to start server: could not connect to MongoDB at startup`**:
+   - The server exits with code 1 when MongoDB is unreachable within `DB_CONNECT_TIMEOUT` ms (pm2 restarts it). Check `DB_URI` and that `mongod` is running.
+
+6. **`The engine "node" is incompatible with this module` / `Node >= 24 required`**:
+   - The host (or pm2's SSH `PATH`) runs an older Node. Install Node 24 and reinstall `node_modules`.

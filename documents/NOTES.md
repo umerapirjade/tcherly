@@ -29,3 +29,46 @@
 - [x] Reduce spacing between time range on save bookmark field
 - [x] Make row width for action tracker & question generator uniform
 - [x] Reduce size for video range selector 
+# Security notes (known limitations)
+
+- **Refresh tokens are not rotated.** `/api/auth/refresh`, `/api/auth/student/refresh` and
+  `/api/auth/researcher/refresh` issue a new access token but keep the same refresh token (one per
+  account, stored in an httpOnly cookie) until it expires, the account signs in again, or it logs
+  out. A stolen refresh cookie stays usable for its lifetime (1 day, or `JWT_REFRESH_EXPIRY` with
+  "remember me"). Logout (`POST /api/auth[/student|/researcher]/logout`) deletes it server-side and
+  works without a valid access token.
+- **Access tokens outlive a password reset.** A password reset deletes all refresh tokens of the
+  account, but access JWTs are stateless: one issued before the reset stays valid until it expires
+  (at most `JWT_EXPIRY`, 1 hour by default).
+- **CSRF on the reset-password forms** (`middleware/csrf.js`, replaces the archived `csurf`): a random
+  secret in the httpOnly, SameSite=Lax `_csrf` cookie plus a hidden `_csrf` form field holding
+  `HMAC-SHA256(SESSION_SECRET, secret)`, compared in constant time; mismatches get 403
+  `invalid csrf token`. JSON API endpoints use Bearer tokens and are not CSRF-protected.
+- **NoSQL operator injection**: `middleware/sanitize.js` strips `$`-prefixed and dotted keys from
+  `req.body`, `req.query` and `req.params` before any controller runs, and controllers type-check
+  ids/emails. Mongoose's `sanitizeFilter` is deliberately **not** enabled: about 40 server-built
+  filters use operators (`$in`, `$gt`, `$lte`, `$exists`/`$ne`, `$or`, ...) that it would wrap in
+  `$eq` and silently turn into "match nothing" unless every one were wrapped in `mongoose.trusted()`.
+  Revisit if the sanitize middleware is ever removed.
+- **Mongoose `strictQuery`** is set explicitly to `false` (`database/index.js`), matching the
+  Mongoose 5 behaviour the queries were written for.
+
+# Dependency / runtime notes
+
+- Backend runs on **Node 24 LTS** (`.node-version`, `engines.node >= 24`). CI (`.github/workflows/ci.yml`)
+  runs the jest suite, the Vite client build and the Playwright e2e suite on Node 24 with a MongoDB service.
+- **Express stays on 4.x**: `middleware/sanitize.js` mutates `req.query` in place, which Express 5 turns into a
+  read-only getter. Moving to Express 5 requires changing the sanitizer to build a sanitized copy (e.g.
+  `Object.defineProperty(req, "query", { value: sanitized })`) and checking the path syntax changes
+  (`/api/*` → `/api/*splat`, `app.get("*")` → `app.get("/*splat")`).
+- **Mongoose 8** (the 9.x line is available; upgrade separately after reading its migration guide).
+  `mongodb` is a direct dependency only to satisfy connect-mongo's peer dependency; keep its range equal to the
+  driver version Mongoose pins (`~6.20.0` for Mongoose 8.24) so only one driver is installed.
+- `express-session` + `connect-mongo` are still mounted but no route uses sessions (all Passport strategies
+  run with `session: false`); they could be removed in a later cleanup.
+- Replaced packages: `csurf` → `middleware/csrf.js`; `mailgun-js` → `mailgun.js` + `form-data`;
+  `simple-youtube-api` → direct YouTube Data API v3 call with `fetch`; `crypto-random-string` → `utils/random.js`;
+  `uuid` → `crypto.randomUUID()`; `date-fns` → a date comparison; `arg`/`chalk`/`yup` (researcher CLI) →
+  `util.parseArgs`/`util.styleText`/plain validation. `pug` and root `sass` were unused and removed.
+- `package.json` `resolutions` pin patched transitive versions: `exceljs/uuid` (exceljs only calls `v4()`),
+  `pm2/js-yaml` (patch release). Drop them once exceljs/pm2 ship the fixes.

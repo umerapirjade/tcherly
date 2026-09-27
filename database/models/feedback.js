@@ -72,4 +72,6 @@ const NewFeedbackSchema = new Schema(
   { timestamps: true }
 );
 
+NewFeedbackSchema.index({ lesson: 1, createdAt: 1 });
+
 module.exports = model("feedback", NewFeedbackSchema);

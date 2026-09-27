@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import ReactPlayer from "react-player";
+import ReactPlayer from "react-player/lazy";
 import { useAuth } from "provider/auth";
-import { playerStyles } from "../pages/lesson-id-dashboard";
 import useFeedback from "provider/feedback";
+
+const playerStyles = {};
 
 function Player({ lesson, cantPlay }) {
   const { user, setShowUpgradeModal } = useAuth();

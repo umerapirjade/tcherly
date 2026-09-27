@@ -1,7 +1,7 @@
 const { Schema, model } = require("mongoose");
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 const config = require("../../config");
+const { signAccessToken, comparePassword } = require("../../utils/crypto");
 
 const StudentSchema = new Schema(
   {
@@ -29,28 +29,18 @@ const StudentSchema = new Schema(
   { timestamps: true }
 );
 
+// bcrypt ($2b$) with cost config.saltRounds; hashes created by older bcrypt versions stay valid
 StudentSchema.methods.hashPassword = function (password) {
-  return new Promise((resolve, reject) => {
-    bcrypt.genSalt(config.saltRounds, (err, salt) => {
-      if (err) reject(err);
-      if (salt) {
-        bcrypt.hash(password, salt, (e, hashed) => {
-          if (e) reject(e);
-          resolve(hashed);
-        });
-      }
-    });
-  });
+  return bcrypt.hash(password, config.saltRounds);
 };
 
+// Resolves to a boolean (async bcrypt, does not block the event loop)
 StudentSchema.methods.verifyPassword = function (password) {
-  return bcrypt.compareSync(password, this.password);
+  return comparePassword(password, this.password);
 };
 
 StudentSchema.methods.genToken = function () {
-  const { expiresIn, secret } = config.token;
-  const token = "Bearer " + jwt.sign({ _id: this._id, email: this.email }, secret, { expiresIn });
-  return { token, expiry: expiresIn };
+  return signAccessToken({ _id: this._id, email: this.email }, "student");
 };
 
 StudentSchema.methods.toWeb = function () {

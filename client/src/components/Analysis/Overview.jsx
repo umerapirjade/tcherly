@@ -10,7 +10,7 @@ const COLORS = ["#7c77a5", "#cfcfcf", "#7c77a5"];
 
 const handleSliderTrack =
   (MIN, MAX, values = []) =>
-  ({ props, children }) => {
+  function SliderTrack({ props, children }) {
     const background = getTrackBackground({ values: values, colors: COLORS, min: MIN, max: MAX });
     return (
       <div onMouseDown={props.onMouseDown} onTouchStart={props.onTouchStart} className="nd-slider-track-container" style={props.style}>
@@ -23,12 +23,13 @@ const handleSliderTrack =
 
 const handleSliderThumb =
   (values = []) =>
-  ({ props, isDragged, index }) =>
-    (
+  function SliderThumb({ props, index }) {
+    return (
       <div {...props} className="nd-slider-thumb" style={props.style}>
         {values[index]}
       </div>
     );
+  };
 
 function Overview() {
   const { activated } = useFeedback();

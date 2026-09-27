@@ -1,11 +1,14 @@
 const { Schema, model } = require("mongoose");
 
-const RTSchema = Schema({
+const RTSchema = new Schema({
   user: {
     type: Schema.Types.ObjectId,
     ref: "user",
   },
-  token: String,
+  token: {
+    type: String,
+    index: true,
+  },
   expire_at: {
     type: Date,
   },
@@ -18,6 +21,9 @@ const RTSchema = Schema({
     ref: "student",
   },
 });
+
+// MongoDB removes expired refresh tokens automatically
+RTSchema.index({ expire_at: 1 }, { expireAfterSeconds: 0 });
 
 const RTModel = model("refresh_token", RTSchema);
 

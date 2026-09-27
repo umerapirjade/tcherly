@@ -33,7 +33,7 @@ function QuestionGenerator() {
             name: values.name,
             action: values.action,
           },
-        });
+        }).catch((err) => console.log(err));
 
         setCurrentBookmark((s) => {
           return {
@@ -69,7 +69,7 @@ function QuestionGenerator() {
 
           request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-questions`, {
             questions: result,
-          });
+          }).catch((err) => console.log(err));
 
           return { ...cb, questions: result };
         });
@@ -105,7 +105,7 @@ function QuestionGenerator() {
 
         request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-questions`, {
           questions: result,
-        });
+        }).catch((err) => console.log(err));
 
         return { ...cb, questions: result };
       });

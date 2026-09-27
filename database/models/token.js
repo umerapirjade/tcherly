@@ -5,7 +5,8 @@ const TokenSchema = new Schema(
   {
     token: {
       type: String,
-      required: true
+      required: true,
+      index: true
     },
     user: {
       type: ObjectId,
@@ -26,5 +27,8 @@ const TokenSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// MongoDB removes expired reset tokens automatically
+TokenSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = model("token", TokenSchema);

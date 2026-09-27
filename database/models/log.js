@@ -26,4 +26,6 @@ const LogSchema = new Schema(
   { timestamps: true }
 );
 
+LogSchema.index({ lesson: 1, student: 1, createdAt: 1 });
+
 module.exports = model("log", LogSchema);

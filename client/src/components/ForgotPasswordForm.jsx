@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 
 import { Formik } from "formik";
 import * as Yup from "yup";
-import api from "handler/api";
+import api, { getErrorMessage } from "handler/api";
 
 const forgotPwdDefaultForm = { email: "" };
 
@@ -27,7 +27,7 @@ function ForgotPasswordForm() {
       if (subscribed.current && data) setStatus({ loginForm: data.message });
     } catch (error) {
       if (subscribed.current) {
-        setStatus({ loginForm: "Some error occured, try again" });
+        setStatus({ loginForm: getErrorMessage(error, "Some error occured, try again") });
       }
     }
   };

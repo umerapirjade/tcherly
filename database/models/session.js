@@ -1,6 +1,6 @@
 const { Schema, model } = require("mongoose");
 
-const SessionSchema = Schema({
+const SessionSchema = new Schema({
   ip: String,
   unique_id: String,
   agent: String

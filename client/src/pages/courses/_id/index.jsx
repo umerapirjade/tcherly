@@ -3,13 +3,14 @@ import Layout from "components/Layout";
 import { useEffect } from "react";
 import { useAuth } from "provider/auth";
 import Loader from "components/Loader";
-import { useHistory, useParams } from "react-router-dom";
-import { Button, OverlayTrigger, Tooltip, Table, Modal, Form, Spinner, Dropdown } from "react-bootstrap";
-import ReactPlayer from "react-player";
+import { Link, useHistory, useParams } from "react-router-dom";
+import { Alert, Button, OverlayTrigger, Tooltip, Table, Modal, Form, Spinner, Dropdown } from "react-bootstrap";
+import ReactPlayer from "react-player/lazy";
 
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { useCallback } from "react";
+import { getErrorMessage } from "handler/api";
 
 const playerOptions = {
   youtube: {
@@ -87,12 +88,15 @@ const editCourseValidationSchema = Yup.object({
 function CourseEdit({ course = null, onConfirm = () => {} }) {
   const { request } = useAuth();
   const [editCourseModal, setEditCourseModal] = useState(false);
+  const [editError, setEditError] = useState(null);
 
   const handleShowModal = () => {
+    setEditError(null);
     setEditCourseModal(true);
   };
 
   const handleCloseModal = () => {
+    setEditError(null);
     setEditCourseModal(false);
   };
 
@@ -100,14 +104,18 @@ function CourseEdit({ course = null, onConfirm = () => {} }) {
     initialValues: { name: (course && course.name) || "" },
     validationSchema: editCourseValidationSchema,
     onSubmit: async (values) => {
+      setEditError(null);
       try {
         const { data } = await request("PUT", "/courses/" + course._id, { name: values.name });
         if (data && data.success) {
           onConfirm(values.name);
           setEditCourseModal(false);
+        } else {
+          setEditError("Couldn't save changes, try again.");
         }
       } catch (error) {
         console.log(error);
+        setEditError(getErrorMessage(error, "Couldn't save changes, try again."));
       }
     },
   });
@@ -127,6 +135,7 @@ function CourseEdit({ course = null, onConfirm = () => {} }) {
               {editCourseFormik.touched.name && editCourseFormik.errors.name && <Form.Text className="text-danger">{editCourseFormik.errors.name}</Form.Text>}
             </Form.Group>
           </Form>
+          {editError && <Alert variant="danger">{editError}</Alert>}
           <Button onClick={editCourseFormik.handleSubmit}>
             {editCourseFormik.isSubmitting ? (
               <Spinner animation="border" role="status" size="sm">
@@ -148,13 +157,15 @@ function CourseInfo({ id = "" }) {
   const { request } = useAuth();
 
   const [course, setCourse] = useState(null);
-  const [loadingC, setLoading] = useState(false);
+  const [loadingC, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [addLessonModal, setAddLessonModal] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [copyMessage, setCopyMessage] = useState({});
   const [editLesson, setEditLesson] = useState(null);
   const [deleteLesson, setDeleteLesson] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [deleteCourseError, setDeleteCourseError] = useState(null);
 
   const [deleteCourseModal, setDeleteCourseModal] = useState(false);
 
@@ -166,47 +177,76 @@ function CourseInfo({ id = "" }) {
     };
   }, []);
 
-  const refreshCourse = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const { data } = await request("GET", "/courses/" + id);
-
-      if (data && data.success) {
-        if (subscribed.current) {
-          setCourse(data.course);
-        }
+  // Loads the course; `background` refreshes keep the current view mounted (no full-page loader).
+  const refreshCourse = useCallback(
+    async ({ background = false } = {}) => {
+      if (!id) {
+        setLoadError("No course was specified.");
+        setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.log(error);
-    } finally {
-      if (subscribed.current) setLoading(false);
-    }
-  }, [request, id]);
+
+      if (!background) setLoading(true);
+
+      try {
+        const { data } = await request("GET", "/courses/" + id);
+
+        if (!subscribed.current) return;
+        if (data && data.success && data.course) {
+          setCourse(data.course);
+          setLoadError(null);
+        } else if (!background) {
+          setCourse(null);
+          setLoadError("This course could not be found.");
+        }
+      } catch (error) {
+        console.log(error);
+        if (!subscribed.current) return;
+        const status = error && error.response && error.response.status;
+        if (!background) {
+          setCourse(null);
+          setLoadError(status === 404 ? "This course could not be found." : getErrorMessage(error, "Couldn't load this course."));
+        }
+      } finally {
+        if (subscribed.current && !background) setLoading(false);
+      }
+    },
+    [request, id]
+  );
 
   const handleDeleteCourseModal = () => {
+    setDeleteCourseError(null);
     setDeleteCourseModal(true);
   };
 
   const handleCloseDeleteCourseModal = () => {
+    setDeleteCourseError(null);
     setDeleteCourseModal(false);
   };
 
-  const handleAddLesson = async (values, { setErrors, resetForm }) => {
-    setErrors({ formError: null });
+  const handleAddLesson = async (values, { setStatus, resetForm }) => {
+    setStatus(null);
+    // Prefer the loaded course's id; never post to /courses//lesson.
+    const courseId = (course && course._id) || id;
+    if (!courseId) {
+      setStatus({ formError: "Couldn't determine the course for this lesson, please reload the page." });
+      return;
+    }
     try {
-      const { data } = await request("POST", `/courses/${id}/lesson`, values);
+      const { data } = await request("POST", `/courses/${courseId}/lesson`, values);
       if (data && data.success) {
         if (subscribed.current) {
-          await refreshCourse();
-          setAddLessonModal(false);
-          resetForm();
+          await refreshCourse({ background: true });
+          if (subscribed.current) {
+            setAddLessonModal(false);
+            resetForm();
+          }
         }
         return;
       }
-      setErrors({ formError: "Couldn't save lesson" });
+      setStatus({ formError: (data && data.message) || "Couldn't save lesson, try again." });
     } catch (error) {
-      setErrors({ formError: "Some error occured" });
+      setStatus({ formError: getErrorMessage(error, "Couldn't save lesson, try again.") });
     }
   };
 
@@ -220,7 +260,8 @@ function CourseInfo({ id = "" }) {
     validationSchema: addLessonValidationSchema,
   });
 
-  const handleEditLessonSubmit = async (values, { setErrors, resetForm }) => {
+  const handleEditLessonSubmit = async (values, { setStatus, resetForm }) => {
+    setStatus(null);
     try {
       if (!editLesson) return;
       const { data } = await request("PUT", `/lessons/${editLesson}`, values);
@@ -236,10 +277,10 @@ function CourseInfo({ id = "" }) {
 
         resetForm();
       } else {
-        setErrors({ formError: "Couldn't save changes, try again" });
+        setStatus({ formError: (data && data.message) || "Couldn't save changes, try again." });
       }
     } catch (error) {
-      setErrors({ formError: "Some error occured." });
+      setStatus({ formError: getErrorMessage(error, "Couldn't save changes, try again.") });
     }
   };
 
@@ -259,33 +300,15 @@ function CourseInfo({ id = "" }) {
   });
 
   useEffect(() => {
-    const _refreshCourse = () => {
-      setLoading(true);
-
-      request("GET", "/courses/" + id)
-        .then(({ data }) => {
-          if (data && data.success) {
-            if (subscribed.current) {
-              setCourse(data.course);
-            }
-          }
-        })
-        .catch((err) => {
-          console.log(err);
-        })
-        .finally(() => {
-          if (subscribed.current) setLoading(false);
-        });
-    };
-
-    _refreshCourse();
-  }, [request, id]);
+    refreshCourse();
+  }, [refreshCourse]);
 
   const hideAddLessonModal = (e) => {
     setAddLessonModal(false);
   };
 
   const showAddLessonModal = (e) => {
+    formik.setStatus(null);
     setAddLessonModal(true);
   };
 
@@ -305,7 +328,7 @@ function CourseInfo({ id = "" }) {
         }, 800);
       })
       .catch((message) => {
-        setCopyMessage({ error: false, message });
+        setCopyMessage({ error: true, message });
       });
   };
 
@@ -318,10 +341,12 @@ function CourseInfo({ id = "" }) {
   };
   const handleDeleteLesson = (key) => (e) => {
     const lesson = course.lessons[key];
+    setDeleteError(null);
     if (lesson) setDeleteLesson(lesson._id);
   };
 
   const handleDeleteLessonCancel = () => {
+    setDeleteError(null);
     setDeleteLesson(null);
   };
 
@@ -346,7 +371,7 @@ function CourseInfo({ id = "" }) {
       }
     } catch (error) {
       console.log(error);
-      setDeleteError("Some error occured while deleting");
+      setDeleteError(getErrorMessage(error, "Some error occured while deleting"));
     }
   };
   const editCourseFormikRef = useRef();
@@ -357,18 +382,25 @@ function CourseInfo({ id = "" }) {
     e.preventDefault();
 
     setDeleting(true);
+    setDeleteCourseError(null);
 
     try {
       const { data } = await request("DELETE", "/courses/" + course._id);
 
+      if (!subscribed.current) return;
       if (data && data.success) {
-        if (subscribed.current) {
-          setDeleting(false);
-          history.replace("/dashboard");
-        }
+        setDeleting(false);
+        history.replace("/dashboard");
+      } else {
+        setDeleting(false);
+        setDeleteCourseError("Couldn't remove the course, try again.");
       }
     } catch (error) {
       console.log(error);
+      if (subscribed.current) {
+        setDeleting(false);
+        setDeleteCourseError(getErrorMessage(error, "Couldn't remove the course, try again."));
+      }
     }
   };
 
@@ -379,7 +411,22 @@ function CourseInfo({ id = "" }) {
   }, [course]);
 
   if (loadingC) return <Loader />;
-  if (!course) return <p>No fucking way</p>;
+  if (!course)
+    return (
+      <div className="card course-card">
+        <div className="card-body text-center py-5">
+          <Alert variant="danger" className="mb-4">
+            {loadError || "Couldn't load this course."}
+          </Alert>
+          <Button variant="outline-secondary" className="mr-2" onClick={() => refreshCourse()}>
+            Try again
+          </Button>
+          <Link to="/dashboard" className="btn btn-primary">
+            <i className="fas fa-long-arrow-alt-left mr-1" /> Back to dashboard
+          </Link>
+        </div>
+      </div>
+    );
 
   return (
     <div className="card course-card">
@@ -390,10 +437,10 @@ function CourseInfo({ id = "" }) {
             <h4 className="font-weight-bold text-danger">Are you sure?</h4>
             <h5 className="text-danger font-weight-normal">If you proceed, it will remove the course.</h5>
             <div className="mt-4">
-              <button onClick={handleDeleteLessonCancel} className="btn btn-secondary mr-2">
+              <button onClick={handleCloseDeleteCourseModal} className="btn btn-secondary mr-2">
                 Cancel
               </button>
-              <button className="btn btn-danger" onClick={handleDeleteCourse}>
+              <button className="btn btn-danger" disabled={deleting} onClick={handleDeleteCourse}>
                 {deleting ? (
                   <Spinner animation="border" role="status" size="sm">
                     <span className="sr-only">Loading...</span>
@@ -403,6 +450,11 @@ function CourseInfo({ id = "" }) {
                 )}
               </button>
             </div>
+            {deleteCourseError && (
+              <Alert variant="danger" className="mt-3 mb-0">
+                {deleteCourseError}
+              </Alert>
+            )}
           </div>
         </Modal.Body>
       </Modal>
@@ -450,8 +502,13 @@ function CourseInfo({ id = "" }) {
                   <Form.Control name="desc" as="textarea" isInvalid={formik.errors.desc} onChange={formik.handleChange} onBlur={formik.handleBlur} value={formik.values.desc} />
                 </Form.Group>
               </div>
+              {formik.status && formik.status.formError && (
+                <div className="col-12">
+                  <Alert variant="danger">{formik.status.formError}</Alert>
+                </div>
+              )}
               <div className="col-12 text-center">
-                <Button onClick={formik.handleSubmit}>
+                <Button disabled={formik.isSubmitting} onClick={formik.handleSubmit}>
                   {formik.isSubmitting ? (
                     <Spinner animation="border" role="status" size="sm">
                       <span className="sr-only">Loading...</span>
@@ -511,8 +568,13 @@ function CourseInfo({ id = "" }) {
                   <Form.Control name="desc" as="textarea" isInvalid={editFormik.errors.desc} onChange={editFormik.handleChange} onBlur={editFormik.handleBlur} value={editFormik.values.desc} />
                 </Form.Group>
               </div>
+              {editFormik.status && editFormik.status.formError && (
+                <div className="col-12">
+                  <Alert variant="danger">{editFormik.status.formError}</Alert>
+                </div>
+              )}
               <div className="col-12 text-center">
-                <Button onClick={editFormik.handleSubmit}>
+                <Button disabled={editFormik.isSubmitting} onClick={editFormik.handleSubmit}>
                   {editFormik.isSubmitting ? (
                     <Spinner animation="border" role="status" size="sm">
                       <span className="sr-only">Loading...</span>
@@ -543,7 +605,11 @@ function CourseInfo({ id = "" }) {
               </button>
             </div>
 
-            {deleteError && <div className="mt-3">{deleteError}</div>}
+            {deleteError && (
+              <Alert variant="danger" className="mt-3 mb-0">
+                {deleteError}
+              </Alert>
+            )}
           </div>
         </Modal.Body>
       </Modal>
@@ -593,7 +659,7 @@ function CourseInfo({ id = "" }) {
               <tbody>
                 {course.lessons.map((lesson, k) => {
                   return (
-                    <tr key={k}>
+                    <tr key={lesson._id || k}>
                       <td width="10%">{k + 1}</td>
                       <td>
                         <div className="d-flex align-items-center">

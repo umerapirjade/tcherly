@@ -1,27 +1,30 @@
-import React, { Component } from "react";
+import { Component, Suspense, lazy } from "react";
 import { Switch, Route, Redirect } from "react-router-dom";
 
-import IndexPage from "./pages";
-import LoginPage from "./pages/login";
-import RegisterPage from "./pages/register";
-import LandingPage from "pages/landing";
-import CourseId from "pages/courses/_id";
-import LessonId from "pages/lesson-id";
-import LessonIdDashboard from "pages/lesson-id-dashboard";
-import NotFoundPage from "pages/not-found";
-import ForgotPasswordPage from "pages/forgot-password";
-import ResetPasswordPage from "pages/reset-password";
-import TermsPage from "pages/terms";
-import IntroPage from "pages/intro";
-import DashboardTourPage from "pages/dashboard-tour";
-import ResearchPage from "pages/research";
-import TeacherGuidelinesPage from "pages/teacher-guidelines";
-import ResearcherPage from "pages/researcher";
+// Route-level code splitting: each page (and the heavy vendors only it uses) loads on demand.
+const IndexPage = lazy(() => import("pages/index"));
+const LoginPage = lazy(() => import("pages/login"));
+const RegisterPage = lazy(() => import("pages/register"));
+const LandingPage = lazy(() => import("pages/landing"));
+const CourseId = lazy(() => import("pages/courses/_id"));
+const LessonId = lazy(() => import("pages/lesson-id"));
+const LessonIdDashboard = lazy(() => import("pages/lesson-id-dashboard"));
+const NotFoundPage = lazy(() => import("pages/not-found"));
+const ForgotPasswordPage = lazy(() => import("pages/forgot-password"));
+const ResetPasswordPage = lazy(() => import("pages/reset-password"));
+const TermsPage = lazy(() => import("pages/terms"));
+const IntroPage = lazy(() => import("pages/intro"));
+const DashboardTourPage = lazy(() => import("pages/dashboard-tour"));
+const ResearchPage = lazy(() => import("pages/research"));
+const TeacherGuidelinesPage = lazy(() => import("pages/teacher-guidelines"));
+const ResearcherPage = lazy(() => import("pages/researcher"));
+const VideoPage = lazy(() => import("pages/video"));
 
 import Loader from "components/Loader";
+import ServerUnreachable from "components/ServerUnreachable";
+import { safeRedirectPath } from "handler/api";
 
 import { AuthContext } from "provider/auth";
-import VideoPage from "pages/video";
 
 const routes = [
   { to: "/dashboard", name: "Index", component: IndexPage, exact: true },
@@ -35,6 +38,13 @@ const routes = [
   { to: "/tour", name: "Dashboard tour", component: DashboardTourPage, exact: true },
 ];
 
+// Paths that need a logged-in teacher; logged-out visitors are sent to /login and brought back afterwards.
+const protectedPaths = ["/dashboard", "/instructions", "/c/:course_id", "/l/:id/dashboard", "/tour"];
+
+function getRedirectTarget(location) {
+  return safeRedirectPath(location && location.state && location.state.from);
+}
+
 class App extends Component {
   static contextType = AuthContext;
   subscribed = true;
@@ -42,42 +52,70 @@ class App extends Component {
     super();
     this.state = {
       loading: true,
+      // true when the first session check failed with a network / server error (not a logout).
+      unreachable: false,
     };
   }
   componentDidMount() {
+    this.checkSession();
+  }
+  checkSession = () => {
     const { refresh } = this.context;
 
+    this.setState({ loading: true, unreachable: false });
     refresh()
-      .then(() => {})
-      .catch(console.log)
+      .then(() => {
+        if (this.subscribed) this.setState({ unreachable: false });
+      })
+      .catch((error) => {
+        console.log(error);
+        if (this.subscribed) this.setState({ unreachable: true });
+      })
       .finally(() => {
         if (this.subscribed) this.setState({ loading: false });
       });
-  }
+  };
   componentWillUnmount() {
     this.subscribed = false;
   }
   render() {
     const { user } = this.context;
     if (this.state.loading) return <Loader />;
-    if (!user)
-      return (
-        <Switch>
-          <Route key="landing" path="/" component={LandingPage} exact />
-          <Route key="login" path="/login" component={LoginPage} exact />
-          <Route key="register" path="/register" component={RegisterPage} exact />
-          <Route key="forgot-password" path="/password/forgot" component={ForgotPasswordPage} exact />
-          <Route key="reset-password" path="/password/reset" component={ResetPasswordPage} exact />
-          <Route key="lesson-id" path="/l/:id" component={LessonId} exact />
-          <Route key="research" path="/research" component={ResearchPage} exact />
-          <Route key="guidelines" path="/guidelines" component={TeacherGuidelinesPage} exact />
-          <Route key="introduction" path="/introduction" component={VideoPage} exact />
-          <Route key="terms" path="/terms" component={TermsPage} />
-          <Route key="intro" path="/intro" component={IntroPage} />
-          <Route key="researcher" path="/researcher" component={ResearcherPage} />
-          <Route key="default" component={NotFoundPage} />
-        </Switch>
-      );
+    return <Suspense fallback={<Loader />}>{user ? this.renderUserRoutes() : this.renderGuestRoutes()}</Suspense>;
+  }
+  renderGuestRoutes() {
+    return (
+      <Switch>
+        <Route key="landing" path="/" component={LandingPage} exact />
+        <Route key="login" path="/login" component={LoginPage} exact />
+        <Route key="register" path="/register" component={RegisterPage} exact />
+        <Route key="forgot-password" path="/password/forgot" component={ForgotPasswordPage} exact />
+        <Route key="reset-password" path="/password/reset" component={ResetPasswordPage} exact />
+        <Route key="lesson-id" path="/l/:id" component={LessonId} exact />
+        <Route key="research" path="/research" component={ResearchPage} exact />
+        <Route key="guidelines" path="/guidelines" component={TeacherGuidelinesPage} exact />
+        <Route key="introduction" path="/introduction" component={VideoPage} exact />
+        <Route key="terms" path="/terms" component={TermsPage} />
+        <Route key="intro" path="/intro" component={IntroPage} />
+        <Route key="researcher" path="/researcher" component={ResearcherPage} />
+        <Route
+          key="protected"
+          path={protectedPaths}
+          exact
+          render={({ location }) =>
+            // We couldn't tell whether the user is logged in; offer a retry instead of the login page.
+            this.state.unreachable ? (
+              <ServerUnreachable onRetry={this.checkSession} />
+            ) : (
+              <Redirect to={{ pathname: "/login", state: { from: location.pathname + location.search } }} />
+            )
+          }
+        />
+        <Route key="default" component={NotFoundPage} />
+      </Switch>
+    );
+  }
+  renderUserRoutes() {
     return (
       <Switch>
         {routes.map((route, key) => (
@@ -86,7 +124,7 @@ class App extends Component {
         <Redirect path="/password/forgot" to="/login" />
         <Redirect path="/password/reset" to="/login" />
         <Redirect path="/register" to="/login" />
-        <Redirect path="/login" to="/" />
+        <Route path="/login" render={({ location }) => <Redirect to={getRedirectTarget(location)} />} />
         <Route key="terms" path="/terms" component={TermsPage} />
         <Route key="intro" path="/intro" component={IntroPage} />
         <Route key="introduction" path="/introduction" component={VideoPage} exact />

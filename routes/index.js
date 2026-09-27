@@ -1,5 +1,6 @@
 const router = require("express").Router();
-const csrfProtect = require("csurf")({ cookie: true });
+// Double-submit CSRF protection; the `_csrf` secret cookie is httpOnly, sameSite=lax, secure in production
+const csrfProtect = require("../middleware/csrf");
 const { renderResetPassword, resetPassword } = require("../controllers/auth");
 const { renderStudentResetPassword, studentResetPassword } = require("../controllers/student-auth");
 

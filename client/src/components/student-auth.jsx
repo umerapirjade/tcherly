@@ -9,7 +9,7 @@ import { useStudentAuth } from "provider/student-auth";
 import PhoneNumberInput, { isPossiblePhoneNumber } from "react-phone-number-input";
 
 import Loader from "./Loader";
-import api from "handler/api";
+import api, { getErrorMessage } from "handler/api";
 
 import "react-phone-number-input/style.css";
 
@@ -152,7 +152,7 @@ const defaultRegistrationForm = {
 const registerValidationSchema = Yup.object({
   name: Yup.string().required("Fullname is required"),
   email: Yup.string().email("Email address is invalid").required("Email address is required"),
-  password: Yup.string().min(8, "Password must be atleast 8 characters").max(64, "Password must not be over 64 characters").required("Password is required"),
+  password: Yup.string().min(8, "Password must be at least 8 characters").max(32, "Password must be at most 32 characters").required("Password is required"),
   confirm_password: Yup.string().required("Confirm password is required"),
   phone: Yup.string().optional(),
 });
@@ -166,11 +166,21 @@ function StudentRegisterForm({ onClickLogin }) {
   const formik = useFormik({
     initialValues: defaultRegistrationForm,
     validationSchema: registerValidationSchema,
-    onSubmit: (values, { setFieldError }) => {
+    onSubmit: (values, { setFieldError, setStatus }) => {
+      setStatus(null);
       if (values.password === values.confirm_password) {
-        register({ ...values }).catch(() => {
-          setFieldError("email", "Account already exists, please use a different email.");
-        });
+        return register({ ...values })
+          .then((ok) => {
+            if (!ok) setStatus({ registerForm: "Registration failed, please try again." });
+          })
+          .catch((err) => {
+            const message = (err && err.message) || "";
+            if (err && (err.status === 401 || err.status === 409 || /exist/i.test(message))) {
+              setFieldError("email", "Account already exists, please use a different email.");
+            } else {
+              setStatus({ registerForm: message || "Registration failed, please try again." });
+            }
+          });
       } else {
         setFieldError("confirm_password", "Passwords don't match");
       }
@@ -292,6 +302,11 @@ function StudentRegisterForm({ onClickLogin }) {
           )}
         </Form.Group>
 
+        {formik.status && formik.status.registerForm && (
+          <Alert variant="danger" className="text-center">
+            {formik.status.registerForm}
+          </Alert>
+        )}
         <div className="text-center pt-3">
           <Button variant="primary" type="submit">
             Register
@@ -336,7 +351,7 @@ function ForgotPasswordForm({ onClickBack }) {
       if (subscribed.current && data) setStatus({ loginForm: data.message });
     } catch (error) {
       if (subscribed.current) {
-        setStatus({ loginForm: "Some error occured, try again" });
+        setStatus({ loginForm: getErrorMessage(error, "Some error occured, try again") });
       }
     }
   };

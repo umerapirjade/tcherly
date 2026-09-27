@@ -116,29 +116,29 @@ The application defines **three completely segregated authenticated identities**
 
 | Layer | Technologies | Notes |
 |---|---|---|
-| **Language** | JavaScript (ES6+, Node.js) | No TypeScript; sporadic JSDoc `@type` annotations |
-| **Server Framework** | Express 4 (`server.js`) | Single process architecture (`instances: 1` in PM2) |
-| **Server Templating** | Handlebars (`hbs`) | Used only for password reset views (`views/`); `pug` is an unreferenced dependency |
-| **Authentication** | Passport (`passport-local` + `passport-jwt`) | 8 distinct strategies registered in `middleware/strategies.js` |
-| **Session Store** | `express-session` + `connect-mongo` | **Mounted but vestigial**: all route authentications specify `{ session: false }` |
-| **Database** | MongoDB via Mongoose 5 | 13 schemas located in `database/models/` |
-| **Client Framework** | React 17 (Create React App), React Router 5 | Root at `client/`; path aliases configured via `jsconfig.json` (`baseUrl: src`) |
+| **Language** | JavaScript (ES2022+, Node.js 24 LTS) | No TypeScript; sporadic JSDoc `@type` annotations. `engines.node >= 24` |
+| **Server Framework** | Express 4.22 (`server.js`) | Single process architecture (`instances: 1` in PM2). Express 5 deferred (see NOTES.md) |
+| **Server Templating** | Handlebars (`hbs`) | Used only for password reset views (`views/`) |
+| **Authentication** | Passport 0.7 (`passport-local` + `passport-jwt`), jsonwebtoken 9 (HS256), bcrypt 6 | 8 distinct strategies registered in `middleware/strategies.js` |
+| **Session Store** | `express-session` + `connect-mongo` 6 | **Mounted but vestigial**: all route authentications specify `{ session: false }` |
+| **Database** | MongoDB via Mongoose 8 (driver 6.x) | 13 schemas located in `database/models/` |
+| **Client Framework** | React 17 (built with Vite), React Router 5 | Root at `client/`; path aliases in `client/vite.config.mjs` (mirrored in `jsconfig.json` for editors) |
 | **Client State** | React Context API | `AuthContext`, `StudentAuthContext`, `FeedbackContext` (no Redux) |
-| **Form Handling** | Formik + Yup | Client-side validation; Yup also used in CLI generator |
+| **Form Handling** | Formik + Yup | Client-side validation only (the CLI generator validates with plain checks) |
 | **Data Visualisation** | Recharts, `@upsetjs/venn.js`, D3, Custom SVG | Recharts for timeline charts; UpsetJS/D3 for Venn sets; custom SVG for radial heatmap |
 | **Video Player** | `react-player` | Embedded YouTube iframe pointing to `youtube-nocookie.com` |
 | **UI & Styling** | SCSS, Bootstrap 4, `react-bootstrap` | Located in `client/src/assets/styles/` |
 | **File Generation** | ExcelJS | Generates multi-tab research workbooks in `controllers/feedback.js` and `researcher.js` |
-| **Email Service** | Mailgun (`mailgun-js`) | Password-reset emails via `utils/mail.js` |
-| **YouTube Metadata** | `simple-youtube-api` | Fetches lecture duration in seconds during lesson creation |
+| **Email Service** | Mailgun (`mailgun.js` + `form-data`) | Password-reset emails via `utils/mail.js` (`MAIL_TRANSPORT=log` prints instead) |
+| **YouTube Metadata** | YouTube Data API v3 via `fetch` (`utils/youtube.js`) | Fetches lecture duration in seconds during lesson creation; page-scrape fallback without `GOOGLE_API_KEY` |
 | **Process Manager** | PM2 | Configuration defined in `ecosystem.config.js` |
+| **Testing / CI** | Jest 30 + supertest, Playwright (`e2e/`), GitHub Actions | `yarn test`; `.github/workflows/ci.yml` |
 
 ### Vestigial & Unused Dependencies
-- `pug`: declared in `package.json` dependencies but never invoked
 - `express-session` & `connect-mongo`: mounted in `server.js` but inactive across all endpoints
 - `controllers/sync.js`: stub controller where all exported methods return HTTP 404
 - `data/mock.js`: empty stub file
-- `csurf`: present only on password-reset HTML routes; absent from JSON API endpoints
+- CSRF protection (`middleware/csrf.js`, replaces `csurf`): present only on password-reset HTML routes; absent from JSON API endpoints
 
 ---
 
@@ -186,7 +186,7 @@ tcherly/
 │   ├── generate.js            ← CLI utility to seed researcher accounts (`yarn generate`)
 │   └── generated/             ← Output directory for generated Excel reports (gitignored)
 │
-└── client/                    ← Frontend React SPA (Create React App)
+└── client/                    ← Frontend React SPA (Vite)
     └── src/
         ├── App.jsx            ← Master client route table with auth-state branching
         ├── index.js           ← Application root mount wrapped in ProvideAuth
@@ -219,34 +219,34 @@ tcherly/
 ### 6.1 Architectural Structure
 Tcherly follows a **monolithic 3-tier architecture**:
 ```
-React SPA (Create React App) ──HTTP / REST──> Express API (Node.js) ────> MongoDB (Mongoose)
+React SPA (Vite build) ──HTTP / REST──> Express API (Node.js 24) ────> MongoDB (Mongoose 8)
 ```
 There are no microservices, external message queues, or distributed caches. All analytics calculations execute synchronously within the Express request lifecycle.
 
 - **Production Deployment**: A single Express process serves both the API endpoints and the static compiled React application (`client/build`). Unmatched non-API routes fall back to `client/build/index.html` via a wildcard handler.
-- **Development Environment**: Two concurrent processes run via `yarn dev`: the React development server on port `8080` and Express on port `3000`, connected via CORS and `REACT_APP_API_URL`.
+- **Development Environment**: Two concurrent processes run via `yarn dev`: the Vite development server on port `8080` (proxying `/api/` and the reset-password pages to `VITE_PROXY_TARGET`, default `http://localhost:3000`) and Express (nodemon) on port `3000`. With `VITE_API_URL` set, the browser calls the API directly via CORS (`CORS_ORIGINS`).
 
 ### 6.2 Middleware Execution Order (`server.js`)
 The execution sequence is order-sensitive:
+0. `await db.connect()` + `db.ensureIndexes()` inside `createApp()` (the app is only built once MongoDB is connected); `trust proxy` from `TRUST_PROXY`
 1. `serveFavicon`: static favicon serving
-2. `express.json` / `express.urlencoded`: request body parsing
-3. `cookieParser`: parses incoming cookies (must precede JWT/session checks)
-4. `cors`: enabled strictly in development (`server.js:47`)
-5. `await db.connect()`: database connection initialization
-6. `session`: session middleware (mounted only if database connects successfully)
-7. `morgan`: request logging (console in dev, `debe_online.log` in production)
+2. `cors`: only when `CORS_ORIGINS` is non-empty (credentialed, listed origins only)
+3. `express.json` / `express.urlencoded`: request body parsing
+4. `sanitize`: strips `$`/dotted keys from body, query and params (NoSQL operator injection)
+5. `cookieParser`: parses incoming cookies (must precede JWT/CSRF checks)
+6. `session`: express-session with connect-mongo, reusing the mongoose client
+7. `morgan`: request logging (console outside production, `debe_online.log` except in tests)
 8. `passport.initialize()`: initialises Passport context
-9. `trust proxy`: configured to trust upstream reverse proxies (`req.ip` honors `X-Forwarded-For`)
-10. `express.static`: serves public assets
-11. Route mounting (`/`, `/api/auth`, `/api/courses`, `/api/lessons`, `/api/misc`, `/api/sync`)
-12. API catch-all 404 handler (`/api/*`)
-13. Production React SPA fallback handler (`get("*")`)
-14. Global error handling middleware
+9. `express.static`: serves public assets
+10. Route mounting (`/` incl. CSRF-protected reset pages, `/api/auth`, `/api/courses`, `/api/lessons`, `/api/misc`, `/api/sync`); auth routes carry `express-rate-limit` limiters
+11. API catch-all 404 handler (`/api/*`)
+12. Production React SPA fallback handler (`get("*")`, serves `client/build`)
+13. Global error handling middleware (generic 400 for malformed bodies; 5xx details only in the log)
 
-### 6.3 Database Connection & Fail-Open Risk
+### 6.3 Database Connection
 `database/index.js` encapsulates MongoDB connection logic in `CreateConnection`.
-- `db.connect()` never rejects: connection errors are caught and logged to the console without re-throwing.
-- If the MongoDB instance is unreachable, `server.js` continues booting. Express begins accepting requests, but any subsequent database query hangs or fails, and no health-check endpoint exists.
+- `db.connect()` rejects when MongoDB is unreachable within `DB_CONNECT_TIMEOUT` ms; `server.js` then logs the error and exits with code 1 (pm2 restarts it). The server never starts accepting requests without a database.
+- After connecting, `db.ensureIndexes()` waits for every model's index build and logs (but does not crash on) failures such as duplicate lesson slugs.
 
 ### 6.4 Client-Side Routing Dual-Table (`App.jsx`)
 `client/src/App.jsx` dynamically renders one of two distinct routing trees depending on whether `user` is populated:
@@ -258,8 +258,8 @@ Because `/l/:id` is accessible to both students (unauthenticated teachers) and t
 ### 6.5 Cross-Cutting Concerns
 - **Logging**: Morgan appends CSV records to `debe_online.log` without log rotation, creating unbounded disk growth in production.
 - **Caching**: No caching layer (Redis or in-memory) exists; identical dashboard loads repeatedly recalculate the full aggregation pipeline.
-- **CSRF Protection**: Applied exclusively to server-rendered password-reset routes via `csurf`; JSON endpoints rely solely on Bearer token validation.
-- **Secret Fallback**: `config/index.js` defaults both JWT and session secrets to `"setup_dotenv_file_for_security"` if `.env` is absent.
+- **CSRF Protection**: Applied exclusively to server-rendered password-reset routes via `middleware/csrf.js` (double-submit cookie + HMAC token); JSON endpoints rely solely on Bearer token validation.
+- **Secrets**: `config/index.js` refuses to start unless `JWT_SECRET` and `SESSION_SECRET` are set and at least 32 characters long.
 
 ---
 

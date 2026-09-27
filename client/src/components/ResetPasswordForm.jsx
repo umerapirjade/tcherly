@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 
 import { Formik } from "formik";
 import * as Yup from "yup";
-import { useQuery } from "utils/query";
 
 const defaultForm = { email: "" };
 
@@ -14,7 +13,6 @@ const loginValidationSchema = Yup.object({
 
 function ResetPasswordForm() {
   const subscribed = useRef(true);
-  const query = useQuery();
 
   useEffect(() => {
     subscribed.current = true;
@@ -31,9 +29,6 @@ function ResetPasswordForm() {
       }
     }
   };
-
-  if (query.token) {
-  }
 
   return (
     <Formik initialValues={defaultForm} validationSchema={loginValidationSchema} onSubmit={handleOnSubmit}>

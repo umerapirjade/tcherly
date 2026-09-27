@@ -1,25 +1,27 @@
-const arg = require("arg");
-const chalk = require("chalk");
-const yup = require("yup");
-
 const { db } = require("../database");
 const ResearchUser = require("../database/models/researcher");
-const { parseArguementsIntoOptions, printHelpGuide } = require("../utils/generate");
+const { parseArguementsIntoOptions, printHelpGuide, style } = require("../utils/generate");
 
-const formatError = chalk.red;
-const formatHighlight = chalk.cyanBright;
-const formatSuccess = chalk.greenBright;
-const tag = chalk.magentaBright("[GENERATE]");
-const errorTag = chalk.bgRed("[ERROR]");
+const formatError = style("red");
+const formatHighlight = style("cyanBright");
+const formatSuccess = style("greenBright");
+const tag = style("magentaBright")("[GENERATE]");
+const errorTag = style("bgRed")("[ERROR]");
 
-const ResearcherValidationSchema = yup.object().shape({
-  name: yup.string().required("Please provide a name using `--name name`").min(3, "Please provide a name between 3 to 24 characters").max(24, "Please provide a name between 3 to 24 characters"),
-  email: yup
-    .string()
-    .email("Please provide a valid email using " + formatHighlight(`--email example@email.com`))
-    .required("Please provide a email using `--email example@email.com`"),
-  password: yup.string().required("Please provide a password using `--pass password`").min(6, "Please provide a password between 6 to 24 characters").max(24, "Please provide a password between 6 to 24 characters"),
-});
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const lengthBetween = (value, min, max) => typeof value === "string" && value.length >= min && value.length <= max;
+
+/** Returns the list of validation messages for a new researcher (empty when valid). */
+const validateResearcher = ({ name, email, password }) => {
+  const errors = [];
+  if (!name) errors.push("Please provide a name using `--name name`");
+  else if (!lengthBetween(name, 3, 24)) errors.push("Please provide a name between 3 to 24 characters");
+  if (!email) errors.push("Please provide a email using `--email example@email.com`");
+  else if (!EMAIL_PATTERN.test(email)) errors.push("Please provide a valid email using " + formatHighlight(`--email example@email.com`));
+  if (!password) errors.push("Please provide a password using `--pass password`");
+  else if (!lengthBetween(password, 6, 24)) errors.push("Please provide a password between 6 to 24 characters");
+  return errors;
+};
 
 async function generateResearchUser() {
   try {
@@ -37,10 +39,10 @@ async function generateResearchUser() {
           const researcher = await ResearchUser.findOne({ email: email });
 
           if (researcher) {
-            const deletedResearcher = await researcher.delete();
+            const { deletedCount } = await researcher.deleteOne();
 
-            if (deletedResearcher) {
-              console.log(tag, formatHighlight(deletedResearcher.name || deletedResearcher.email), formatSuccess("successfully removed from researchers."));
+            if (deletedCount) {
+              console.log(tag, formatHighlight(researcher.name || researcher.email), formatSuccess("successfully removed from researchers."));
             }
           } else {
             console.log(tag, errorTag, formatHighlight(email), formatError("does not exist. Hence, no changes were made."));
@@ -55,32 +57,24 @@ async function generateResearchUser() {
           if (researcherExists) {
             console.log(tag, errorTag, formatHighlight(email), formatError("already exists. Hence, no changes were made."));
           } else {
-            try {
-              const isValid = await ResearcherValidationSchema.validate({ email, password, name });
+            const errors = validateResearcher({ email, password, name });
+            if (errors.length > 0) {
+              errors.forEach((error) => console.log(tag, errorTag, formatError(error)));
+            } else {
+              const newResearcher = new ResearchUser({
+                email: email,
+                name: name,
+              });
 
-              if (isValid) {
-                const newResearcher = new ResearchUser({
-                  email: email,
-                  name: name,
-                });
+              const hashedPassword = await newResearcher.hashPassword(password);
 
-                const hashedPassword = await newResearcher.hashPassword(password);
+              newResearcher.password = hashedPassword;
+              const saved = await newResearcher.save();
 
-                newResearcher.password = hashedPassword;
-                const saved = await newResearcher.save();
-
-                if (saved) {
-                  console.log(tag, formatSuccess("Created researcher account for"), formatHighlight(name || email));
-                } else {
-                  console.log(tag, formatError("Couldn't create researcher account for"), formatHighlight(name || email));
-                }
-              }
-            } catch ({ errors = [], ...everythingElse }) {
-              debugLog(everythingElse);
-              if (errors.length > 0) {
-                errors.forEach((error) => {
-                  console.log(tag, errorTag, formatError(error));
-                });
+              if (saved) {
+                console.log(tag, formatSuccess("Created researcher account for"), formatHighlight(name || email));
+              } else {
+                console.log(tag, formatError("Couldn't create researcher account for"), formatHighlight(name || email));
               }
             }
           }

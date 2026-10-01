@@ -146,6 +146,14 @@ function LessonIdDashboard() {
   if (lesson) {
     return (
       <>
+        <div style={{ padding: "4px 20px", borderBottom: "1px solid #dee2e6", backgroundColor: "#fff", fontSize: "0.82rem" }}>
+          <Link
+            to={lesson.course ? `/c/${lesson.course}` : "/dashboard"}
+            style={{ color: "#6c757d", display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: "0.82rem" }}
+          >
+            <i className="fas fa-arrow-left" style={{ fontSize: "0.75rem" }} /> Back to Course
+          </Link>
+        </div>
         {rangeError && (
           <Alert variant="danger" className="m-2" dismissible onClose={() => setRangeError(null)}>
             {rangeError}

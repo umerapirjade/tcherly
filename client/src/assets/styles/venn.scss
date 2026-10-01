@@ -7,8 +7,10 @@
     position: relative;
 
     svg {
+      // Fit both dimensions (viewBox keeps the aspect ratio), so wide-but-short boxes don't overflow
       width: 100%;
-      height: auto;
+      height: 100%;
+      max-height: 100%;
       user-select: none;
     }
   }
@@ -20,7 +22,7 @@
     height: auto;
     padding: 8px;
     margin-top: -20px;
-    font: calc(0.6vh + 0.6vw) sans-serif;
+    font: calc(0.6vh + calc(0.6 * var(--tc-vw))) sans-serif;
     background: #ddd;
     pointer-events: none;
     border-radius: 4px;
@@ -29,7 +31,7 @@
   &-caption {
     position: absolute;
     bottom: 0;
-    font-size: calc(0.55vh + 0.55vw);
+    font-size: calc(0.55vh + calc(0.55 * var(--tc-vw)));
     width: 100%;
     text-align: center;
   }

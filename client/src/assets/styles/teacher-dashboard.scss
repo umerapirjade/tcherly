@@ -19,20 +19,28 @@
   }
 }
 
+// 1vw, capped at 16:9 of the viewport height: on wide-but-short screens (e.g. 2000x770) sizes that scale
+// with the width would otherwise outgrow the fixed-height dashboard and overlap.
+:root {
+  --tc-vw: min(1vw, 1.78vh);
+}
+
 .teacher-dashboard {
   display: grid;
   min-height: 0;
   min-width: 0;
   grid-template-columns: 1fr;
-  grid-template-rows: 4fr 1fr;
+  // Everything fits in one screen (no page scroll): the analysis view on top, Quiz check-ins and
+  // Viewing behaviour side by side in the bottom band. 30px nav + 38px back-link bar.
+  height: calc(100vh - 30px - 30px);
+  grid-template-rows: minmax(0, 1.6fr) minmax(250px, 1fr);
   gap: 0px 0px;
   grid-template-areas:
     "."
     ".";
-  height: 100%;
   background: #fff;
 
-  $childPadding: calc(0.25vh + 0.25vw);
+  $childPadding: calc(0.25vh + calc(0.25 * var(--tc-vw)));
   $borderColor: #ccc;
   $bgColor: #f6f5fb;
 
@@ -45,7 +53,7 @@
     border-radius: 6px;
     box-shadow: 0px 0px 40px -10px $borderColor;
 
-    $headerH: calc(0.6vh + 0.6vw);
+    $headerH: calc(0.6vh + calc(0.6 * var(--tc-vw)));
     .header {
       position: absolute;
       top: 0;
@@ -78,12 +86,12 @@
 
   .td-bottom {
     display: grid;
-    min-height: 0;
     min-width: 0;
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: 1fr;
-    gap: 0px 0px;
-    grid-template-areas: ". .";
+    min-height: 0;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    // Same spacing and white page background as the panels above
+    gap: $childPadding;
+    padding: 0 $childPadding $childPadding;
   }
 
   .td-left {
@@ -105,16 +113,16 @@
       "."
       ".";
     .nd-slider-thumb {
-      width: calc(0.9vh + 0.9vw);
-      height: calc(0.9vh + 0.9vw);
-      font-size: calc(0.45vh + 0.45vw);
+      width: calc(0.9vh + calc(0.9 * var(--tc-vw)));
+      height: calc(0.9vh + calc(0.9 * var(--tc-vw)));
+      font-size: calc(0.45vh + calc(0.45 * var(--tc-vw)));
       line-height: 1;
     }
     .filter-threshold {
       position: absolute;
-      top: calc(0.25vh + 0.25vw);
+      top: calc(0.25vh + calc(0.25 * var(--tc-vw)));
       right: 0;
-      height: calc(1vh + 1vw);
+      height: calc(1vh + calc(1 * var(--tc-vw)));
       border-radius: 6px;
       width: 40%;
       padding: 0.5rem 1.5rem;
@@ -126,11 +134,11 @@
         flex: 1 0 auto;
       }
       .info-icon {
-        flex: 0 0 calc(0.55vh + 0.55vw);
-        font-size: calc(0.3vh + 0.3vw);
-        width: calc(0.55vh + 0.55vw);
-        height: calc(0.55vh + 0.55vw);
-        border-width: calc(0.05vh + 0.05vw);
+        flex: 0 0 calc(0.55vh + calc(0.55 * var(--tc-vw)));
+        font-size: calc(0.3vh + calc(0.3 * var(--tc-vw)));
+        width: calc(0.55vh + calc(0.55 * var(--tc-vw)));
+        height: calc(0.55vh + calc(0.55 * var(--tc-vw)));
+        border-width: calc(0.05vh + calc(0.05 * var(--tc-vw)));
       }
     }
   }
@@ -154,10 +162,10 @@
       display: flex;
       flex-direction: column;
     }
-    $remainingH: calc(100% - (1.2vh + 1.2vw + 4vh + 4vw));
+    $remainingH: calc(100% - (1.2vh + calc(1.2 * var(--tc-vw)) + 4vh + calc(4 * var(--tc-vw))));
     .nd-slider-track-container {
-      flex: 0 0 calc(1.2vh + 1.2vw);
-      height: calc(1.2vh + 1.2vw);
+      flex: 0 0 calc(1.2vh + calc(1.2 * var(--tc-vw)));
+      height: calc(1.2vh + calc(1.2 * var(--tc-vw)));
       width: 100%;
       padding: 0.25rem 1.2rem 0.25rem 46px;
     }
@@ -167,8 +175,8 @@
       padding-right: 1rem;
     }
     .nd-overview-selection {
-      flex: 0 1 calc(4vh + 4vw);
-      height: calc(4vh + 4vw);
+      flex: 0 1 calc(4vh + calc(4 * var(--tc-vw)));
+      height: calc(4vh + calc(4 * var(--tc-vw)));
     }
   }
 
@@ -190,8 +198,8 @@
     min-width: 0;
   }
 
-  $saveBtnPadding: calc(0.25vh + 0.25vw);
-  $saveBtnHeight: calc(1.25vh + 1.25vw);
+  $saveBtnPadding: calc(0.25vh + calc(0.25 * var(--tc-vw)));
+  $saveBtnHeight: calc(1.25vh + calc(1.25 * var(--tc-vw)));
 
   .td-save-content {
     display: grid;
@@ -219,8 +227,8 @@
     min-height: 0;
     min-width: 0;
     border-right: 1px solid $borderColor;
-    padding: calc(0.25vh + 0.25vw);
-    font-size: calc(0.5vh + 0.4vw);
+    padding: calc(0.25vh + calc(0.25 * var(--tc-vw)));
+    font-size: calc(0.5vh + calc(0.4 * var(--tc-vw)));
 
     .nd-btn {
       .title {
@@ -243,7 +251,7 @@
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        font-size: calc(0.5vh + 0.5vw) !important;
+        font-size: calc(0.5vh + calc(0.5 * var(--tc-vw))) !important;
       }
     }
 
@@ -287,10 +295,10 @@
     border-right: 1px solid $borderColor;
     padding: 0.5rem 1.5rem;
     .btn {
-      font-size: calc(0.5vh + 0.5vw) !important;
+      font-size: calc(0.5vh + calc(0.5 * var(--tc-vw))) !important;
 
       i {
-        font-size: calc(0.45vh + 0.45vw) !important;
+        font-size: calc(0.45vh + calc(0.45 * var(--tc-vw))) !important;
       }
     }
   }
@@ -299,7 +307,7 @@
     overflow-y: hidden;
     height: 100%;
     background: #f7f7f9;
-    padding: 0 calc(0.4vh + 0.4vw);
+    padding: 0 calc(0.4vh + calc(0.4 * var(--tc-vw)));
     $totalBookmarkH: calc(#{$saveBtnHeight} + 2 * #{$saveBtnPadding});
     .bookmark-header {
       height: $totalBookmarkH;
@@ -307,7 +315,7 @@
       justify-content: space-between;
       align-items: center;
       .heading {
-        font-size: calc(0.55vh + 0.55vw);
+        font-size: calc(0.55vh + calc(0.55 * var(--tc-vw)));
         font-weight: 600;
       }
       border-bottom: 1px solid lighten($color: $tdBtnColor, $amount: 60);
@@ -341,22 +349,22 @@
       }
 
       .bm-range {
-        font-size: calc(0.5vh + 0.4vw);
+        font-size: calc(0.5vh + calc(0.4 * var(--tc-vw)));
       }
 
       .bm-topic {
         border-left: 1px solid lighten($color: $tdBtnColor, $amount: 60);
-        padding-left: calc(0.25vh + 0.25vw);
+        padding-left: calc(0.25vh + calc(0.25 * var(--tc-vw)));
       }
       .bm-types {
         border-left: 1px solid lighten($color: $tdBtnColor, $amount: 60);
-        padding-left: calc(0.25vh + 0.25vw);
+        padding-left: calc(0.25vh + calc(0.25 * var(--tc-vw)));
         display: flex;
         align-items: center;
         .wrapper {
           flex: 0 0 auto;
           width: auto;
-          padding: calc(0.1vh + 0.1vw);
+          padding: calc(0.1vh + calc(0.1 * var(--tc-vw)));
 
           .badge {
             width: auto;
@@ -484,23 +492,23 @@
       overflow: hidden;
     }
     .nd-prt-gauge {
-      width: 70%;
+      width: min(70%, 20vh);
     }
     .tspan-gauge {
       font-size: 0.8rem !important;
       font-weight: 550;
     }
     .nd-prt-info {
-      margin-bottom: calc(0.3vh + 0.3vw);
+      margin-bottom: calc(0.3vh + calc(0.3 * var(--tc-vw)));
       width: 100%;
       display: flex;
       justify-content: center;
       align-items: center;
-      font-size: calc(0.55vh + 0.55vw);
+      font-size: calc(0.55vh + calc(0.55 * var(--tc-vw)));
       .range-meter {
-        width: calc(3.5vh + 3.5vw);
-        margin-left: calc(0.3vh + 0.3vw);
-        font-size: calc(0.5vh + 0.4vw);
+        width: calc(3.5vh + calc(3.5 * var(--tc-vw)));
+        margin-left: calc(0.3vh + calc(0.3 * var(--tc-vw)));
+        font-size: calc(0.5vh + calc(0.4 * var(--tc-vw)));
       }
     }
   }
@@ -520,7 +528,7 @@
       position: absolute;
       top: 0;
       right: 0;
-      padding: calc(0.5vh + 0.5vw);
+      padding: calc(0.5vh + calc(0.5 * var(--tc-vw)));
     }
   }
 
@@ -566,7 +574,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: 0 calc(1vh + 2vw);
+      padding: 0 calc(1vh + calc(2 * var(--tc-vw)));
       svg {
         height: 100%;
       }
@@ -577,8 +585,8 @@
     position: absolute;
     top: 0;
     left: 0;
-    padding: 0 calc(0.25vh + 0.25vw);
-    font-size: calc(0.55vh + 0.55vw);
+    padding: 0 calc(0.25vh + calc(0.25 * var(--tc-vw)));
+    font-size: calc(0.55vh + calc(0.55 * var(--tc-vw)));
     font-weight: 600;
   }
 
@@ -597,16 +605,14 @@
   }
 
   .td-questions {
-    padding-left: $childPadding;
-    padding-bottom: $childPadding;
     min-width: 0;
     min-height: 0;
     position: relative;
 
     &-info {
       position: absolute;
-      top: calc(0.125vw + 0.125vh);
-      right: calc(0.125vw + 0.125vh);
+      top: calc(calc(0.125 * var(--tc-vw)) + 0.125vh);
+      right: calc(calc(0.125 * var(--tc-vw)) + 0.125vh);
     }
     &-container {
       height: 100%;
@@ -617,9 +623,9 @@
     }
     table.td-table {
       height: 100%;
-      font-size: calc(0.6vh + 0.6vw);
+      font-size: calc(0.6vh + calc(0.6 * var(--tc-vw)));
       .btn.btn-sm {
-        font-size: calc(0.5vh + 0.5vw);
+        font-size: calc(0.5vh + calc(0.5 * var(--tc-vw)));
       }
       th {
         position: sticky;
@@ -635,9 +641,6 @@
   }
 
   .td-actions {
-    padding: $childPadding;
-    padding-top: 0;
-
     min-width: 0;
     min-height: 0;
 
@@ -653,9 +656,9 @@
 
       table.td-table {
         height: 100%;
-        font-size: calc(0.6vh + 0.6vw);
+        font-size: calc(0.6vh + calc(0.6 * var(--tc-vw)));
         .btn.btn-sm {
-          font-size: calc(0.5vh + 0.5vw);
+          font-size: calc(0.5vh + calc(0.5 * var(--tc-vw)));
         }
         th {
           position: sticky;
@@ -725,7 +728,7 @@
     }
 
     &-lock {
-      height: calc(1.5vh + 1.5vw);
+      height: calc(1.5vh + calc(1.5 * var(--tc-vw)));
       max-height: 50%;
       background: #fff;
       border-radius: 50%;
@@ -748,20 +751,22 @@
   &-container {
     height: 100%;
     width: 100%;
-    background: #e1e1f4;
-    font-size: calc(0.55vh + 0.55vw);
+    background: #f3e8ff;
+    font-size: calc(0.55vh + calc(0.55 * var(--tc-vw)));
   }
-  $headerH: calc(2vh + 2vw);
+  $headerH: calc(2vh + calc(2 * var(--tc-vw)));
   &-header {
     height: $headerH;
     width: 100%;
     font-weight: 600;
+    background: #3b0764;
+    color: #f3e8ff;
   }
   &-rows {
     height: calc(100% - #{$headerH});
     overflow-y: auto;
     overflow-y: overlay;
-    background: #f5f5ff;
+    background: #faf5ff;
   }
 
   display: flex;
@@ -781,7 +786,7 @@
     height: 100%;
     display: flex;
     align-items: center;
-    padding: calc(0.25vh + 0.25vw);
+    padding: calc(0.25vh + calc(0.25 * var(--tc-vw)));
   }
 
   .c1 {
@@ -806,7 +811,7 @@
   &.header-row {
     .c4 {
       .nd-btn-save {
-        height: calc(1.25vh + 1.25vw);
+        height: calc(1.25vh + calc(1.25 * var(--tc-vw)));
       }
     }
   }
@@ -827,10 +832,10 @@
     }
   }
 
-  $editBtnH: calc(1.25vh + 1.25vw);
+  $editBtnH: calc(1.25vh + calc(1.25 * var(--tc-vw)));
 
   .btn.btn-edit {
-    background: #b9b4d4;
+    background: #e9d5ff;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -840,13 +845,14 @@
     max-height: $editBtnH;
     line-height: 1;
     border-radius: 50%;
+    &:hover { background: #d8b4fe; }
     i {
       font-size: calc(#{$editBtnH} / 3);
       color: $tdBtnColor;
     }
   }
   .btn.btn-delete {
-    background: #b9b4d4;
+    background: #fce7f3;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -856,9 +862,18 @@
     max-height: $editBtnH;
     line-height: 1;
     border-radius: 50%;
+    &:hover { background: #fca5a5; }
     i {
       font-size: calc(#{$editBtnH} / 3);
-      color: $tdBtnColor;
+      color: #b91c1c;
     }
   }
+}
+
+// Fit the dashboard exactly into the space under the nav and back-link bar (no page scroll).
+main.main-expanded:has(.teacher-dashboard) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  .teacher-dashboard { flex: 1 1 auto; height: auto; min-height: 0; }
 }

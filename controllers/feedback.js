@@ -1,5 +1,6 @@
 const Feedback = require("../database/models/feedback");
 const Lesson = require("../database/models/lesson");
+const Course = require("../database/models/course");
 const UniqueId = require("../database/models/unique-id");
 const Student = require("../database/models/student");
 const ExcelJS = require("exceljs");
@@ -736,6 +737,14 @@ const recordFeedback = async (req, res) => {
     }
 
     await newFeedback.save();
+
+    // Auto-enroll the student in the course so they can access it from the student dashboard.
+    if (lesson.course) {
+      await Course.updateOne(
+        { _id: lesson.course, students: { $ne: student._id } },
+        { $addToSet: { students: student._id } }
+      );
+    }
 
     return res.send({
       success: true,

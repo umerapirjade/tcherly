@@ -51,7 +51,7 @@ function LandingPage() {
   return (
     <>
       <Header className={"landing-header d-flex justify-content-center fixed-top " + headerClass} navClasses="container-fluid" pageName="" />
-      <section id="hero" className="hero d-flex align-items-center position-relative">
+      <section id="hero" className="hero position-relative">
         <div className="container">
           <div className="row">
             <div className="col-lg-5 col-xl-5 d-flex flex-column justify-content-center">
@@ -120,7 +120,7 @@ function LandingPage() {
           <a href="#read-more">Read more</a>
         </div> */}
       </section>
-      <section id="get-started" className="portals py-5">
+      <section id="get-started" className="portals py-5" style={{ background: "#fff" }}>
         <div className="container py-4 border-bottom">
           <div className="row justify-content-between align-items-center">
             <div className="col-lg-6 col-xl-6">
@@ -139,7 +139,7 @@ function LandingPage() {
                         {options.online.map((c) => {
                           return (
                             <div key={c.id} className="feature-box d-flex align-items-center">
-                              <i className="fas fa-circle" style={{ fontSize: ".5rem" }} />
+                              <i className="fas fa-circle" style={{ fontSize: ".5rem", color: "#9333ea", marginRight: 8 }} />
                               <h3>{c.name}</h3>
                             </div>
                           );

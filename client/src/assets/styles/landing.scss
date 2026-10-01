@@ -2,177 +2,138 @@
 
 $navbarHeight: 56px;
 
-$landingPrimary: #ff4c6c;
-$landingDark: #7c1c2a;
-$landingBlack: #263238;
-$landingBlue: #407bff;
+$lp-dark:   #3b0764;
+$lp-mid:    #7e22ce;
+$lp-accent: #9333ea;
+$lp-light:  #f3e8ff;
+$lp-white:  #ffffff;
 
+// ─── Landing Navbar ───────────────────────────────────────────────────────────
 header {
   &.landing-header {
     background: none !important;
 
     nav.navbar {
-      background: none !important;
+      background: transparent !important;
+
+      .navbar-brand .logo,
+      .nav-link,
+      a.nav-link {
+        color: $lp-white !important;
+        font-weight: 500;
+      }
+
       .navbar-collapse {
-        &.collapse {
-          &.show {
-            .navbar-nav {
-              background: #fff !important;
-            }
-          }
+        &.collapse.show .navbar-nav {
+          background: $lp-dark !important;
+          padding: 0.5rem 1rem;
+          border-radius: 0 0 8px 8px;
         }
       }
     }
+
     &.header-scrolled {
-      background: #fff !important;
+      background: $lp-dark !important;
       transition: background 150ms ease-in-out;
+      box-shadow: 0 2px 12px rgba(59, 7, 100, 0.3);
+
+      nav.navbar {
+        background: transparent !important;
+      }
     }
-  }
-  nav.navbar .navbar-brand .logo {
-    font-weight: 600;
-    color: $landingDark;
   }
 }
 
+// ─── Hero ─────────────────────────────────────────────────────────────────────
 .hero {
   width: 100%;
-  height: 100vh;
-  background-image: url(../images/debe-bg.png);
-  background-color: #fff;
+  min-height: 100vh;
+  background: linear-gradient(135deg, $lp-dark 0%, $lp-mid 60%, $lp-accent 100%);
   background-position: top center;
   background-repeat: no-repeat;
   background-size: cover;
+  display: flex;
+  align-items: center;
 
   h1 {
     margin: 0;
-    font-size: 42px;
+    font-size: 2.75rem;
     font-weight: 700;
-    color: $landingDark;
+    color: $lp-white;
+    line-height: 1.2;
   }
+
   h2 {
-    color: $landingBlack;
-    margin: 15px 0 0 0;
-    font-size: 26px;
+    color: rgba(255, 255, 255, 0.82);
+    margin: 16px 0 0 0;
+    font-size: 1.3rem;
+    font-weight: 400;
   }
+
   .btn-get-started {
-    margin-top: 30px;
-    line-height: 0;
+    margin-top: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     padding: 14px 32px;
-    border-radius: 4px;
-    transition: 0.5s;
-    color: #fff;
-    background: $landingPrimary;
-    box-shadow: 0px 5px 30px rgba($landingPrimary, 0.4);
+    border-radius: 50px;
+    transition: all 0.3s;
+    color: $lp-accent;
+    background: $lp-white;
+    font-weight: 600;
+    font-size: 1rem;
     text-decoration: none;
-    span {
-      font-weight: 400;
-      font-size: 16px;
-      letter-spacing: 1px;
-    }
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+
     i {
-      margin-left: 8px;
-      font-size: 18px;
-      transition: 0.3s;
+      font-size: 16px;
+      transition: transform 0.3s;
     }
+
     &:hover {
-      i {
-        transform: translateX(5px);
-      }
+      background: $lp-light;
+      color: $lp-dark;
+      i { transform: translateX(5px); }
     }
   }
+
   .hero-img {
     text-align: right;
+    img {
+      filter: drop-shadow(0 8px 32px rgba(0,0,0,0.25));
+    }
   }
-  @media (min-width: 1024px) {
-    background-attachment: fixed;
-  }
+
   @media (max-width: 991px) {
-    height: auto;
+    min-height: auto;
     padding: 120px 0 60px 0;
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.1rem; }
     .hero-img {
       text-align: center;
-      margin-top: 80px;
-      img {
-        width: 80%;
-      }
+      margin-top: 48px;
+      img { width: 80%; }
     }
   }
+
   @media (max-width: 768px) {
     text-align: center;
-    h1 {
-      font-size: 32px;
-    }
-    h2 {
-      font-size: 24px;
-    }
-    img {
-      width: 100%;
-    }
-  }
-}
-.feature-img {
-  height: 240px;
-  width: auto;
-}
-
-.features {
-  box-shadow: 0px 6px 36px -12px rgba(1, 41, 112, 0.1);
-  .feature-box {
-    padding: 0.75rem;
-    transition: 0.3s;
-    height: 100%;
-    h3 {
-      color: #012970;
-      margin: 0;
-      font-size: 1rem;
-    }
-    i {
-      margin-right: 10px;
-      border-radius: 3px;
-      transition: 0.3s;
-      width: 1rem;
-      height: 1rem;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 1rem;
-    }
+    h1 { font-size: 1.75rem; }
+    img { width: 100%; }
   }
 }
 
-.read-more {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding-bottom: 2.5rem;
-
-  a {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #1f1f1fcc;
-  }
-  @media (max-width: 991px) {
-    display: none;
-  }
-}
-
-main.landing {
-  all: initial;
-}
-
-.features {
-  .btn.btn-primary {
-    background: #0875f7;
-  }
-}
-
+// ─── Portals / Get Started ────────────────────────────────────────────────────
 .portals {
   width: 100%;
-  background-color: #fff;
+  background-color: $lp-white;
+
+  h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: $lp-dark;
+  }
+
   ul {
     list-style: none;
     position: relative;
@@ -180,47 +141,74 @@ main.landing {
     padding-left: 1.5em;
     font-size: 1.125rem;
     margin-bottom: 0;
-
     li:before {
       content: "->";
       position: absolute;
       left: 0;
+      color: $lp-accent;
     }
   }
-  .btn.btn-primary {
-    background: $landingBlue;
-    border-color: $landingBlue;
 
-    &:active,
-    &:focus {
-      background: darken($landingBlue, 10);
-      border-color: darken($landingBlue, 10);
+  .btn.btn-primary {
+    background: $lp-accent;
+    border-color: $lp-accent;
+    border-radius: 50px;
+    padding: 10px 28px;
+    font-weight: 600;
+
+    &:hover, &:active, &:focus {
+      background: $lp-mid;
+      border-color: $lp-mid;
     }
   }
 
   .btn.btn-outline-primary {
-    color: $landingBlue;
-    border-color: $landingBlue;
+    color: $lp-accent;
+    border-color: $lp-accent;
+    border-radius: 50px;
+    padding: 10px 28px;
+    font-weight: 600;
 
     &:hover {
-      color: #ffffff;
-      background-color: $landingBlue;
-      border-color: $landingBlue;
+      color: $lp-white;
+      background-color: $lp-accent;
+      border-color: $lp-accent;
     }
   }
 }
 
-.card.intro-card {
-  min-height: 350px;
-  .card-body {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+// ─── Features ─────────────────────────────────────────────────────────────────
+.features {
+  box-shadow: 0px 6px 36px -12px rgba(88, 28, 135, 0.12);
+
+  .feature-box {
+    padding: 0.75rem;
+    transition: 0.3s;
+    height: 100%;
+
+    h3 {
+      color: $lp-dark;
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    i {
+      color: $lp-accent;
+      margin-right: 10px;
+      border-radius: 3px;
+      transition: 0.3s;
+    }
   }
-  .head {
-    font-size: 24px;
-    font-weight: 500;
+
+  .btn.btn-primary {
+    background: $lp-accent;
+    border-color: $lp-accent;
   }
+}
+
+// ─── Landing page section ─────────────────────────────────────────────────────
+main.landing {
+  all: initial;
 }
 
 .landing {
@@ -229,13 +217,14 @@ main.landing {
     height: calc(100vh - #{$navbarHeight}) !important;
 
     .options {
-      background: #efefef;
-      min-height: calc(100vh) !important;
+      background: $lp-light;
+      min-height: 100vh !important;
       display: flex;
       align-items: center;
       justify-content: center;
     }
   }
+
   height: 100%;
   background-image: url(../images/debe-landing-full.png);
   background-repeat: no-repeat;
@@ -246,12 +235,14 @@ main.landing {
   .intro-text {
     font-size: 2rem;
     font-weight: 500;
+    color: $lp-dark;
   }
 
   .intro-desc {
     font-size: 1.25rem;
     font-weight: 400;
     margin: 1rem 0 3.5rem 0;
+    color: $lp-mid;
   }
 
   &-image {
@@ -260,4 +251,34 @@ main.landing {
     width: 100%;
     height: 100%;
   }
+}
+
+// ─── Section divider strip ────────────────────────────────────────────────────
+.portals > .container {
+  &.border-bottom {
+    border-bottom: 1px solid $lp-light !important;
+  }
+}
+
+// ─── Misc card ────────────────────────────────────────────────────────────────
+.card.intro-card {
+  min-height: 350px;
+  border-color: $lp-light;
+
+  .card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .head {
+    font-size: 24px;
+    font-weight: 500;
+    color: $lp-dark;
+  }
+}
+
+.feature-img {
+  height: 240px;
+  width: auto;
 }

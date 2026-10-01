@@ -44,7 +44,7 @@ $loaderSize: 48px;
 $minNavH: 30px;
 
 body {
-  background: #e8e8e8;
+  background: #faf5ff;
   font-family: "Lexend", sans-serif;
 }
 
@@ -55,7 +55,55 @@ header {
     &.nav-minified {
       height: $minNavH;
     }
-    background: #f9f9f9 !important;
+    background: #3b0764 !important;
+
+    // Navbar links & brand
+    .navbar-brand,
+    .nav-link,
+    .navbar-text { color: #f3e8ff !important; font-weight: 500; }
+    .nav-link:hover { color: #fff !important; }
+
+    // Hamburger toggle
+    .navbar-toggler { border-color: rgba(243,232,255,0.4); }
+    .navbar-toggler-icon { filter: brightness(10); }
+
+    // Dropdown menu — white card with purple accents
+    .dropdown-menu {
+      border: none;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(59,7,100,0.2);
+      padding: 6px;
+      min-width: 160px;
+
+      .dropdown-item {
+        border-radius: 7px;
+        padding: 8px 14px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: #3b0764;
+
+        &:hover, &:focus {
+          background: #f3e8ff;
+          color: #6b21a8;
+        }
+
+        &.upgrade-item {
+          color: #9333ea;
+          font-weight: 600;
+        }
+      }
+
+      .dropdown-divider { border-color: #e9d5ff; margin: 4px 6px; }
+    }
+
+    // User icon toggle button
+    .nav-profile-drop > .nav-link {
+      background: rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 4px 10px !important;
+      &:hover { background: rgba(255,255,255,0.22); }
+    }
+
     .nav-tour-btn.btn {
       box-sizing: border-box;
       height: calc(#{$minNavH} - 2px);
@@ -97,6 +145,46 @@ main {
   &.main-expanded {
     height: calc(100vh - #{$minNavH});
     overflow-y: auto;
+  }
+}
+
+// ─── Login / Register form purple styling ─────────────────────────────────────
+.login-form {
+  .form-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: #3b0764;
+    margin-bottom: 4px;
+  }
+  .form-control {
+    border-color: #e9d5ff;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    &:focus {
+      border-color: #9333ea;
+      box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.15);
+    }
+  }
+  .input-group-text {
+    border-color: #e9d5ff;
+    background: #faf5ff;
+    color: #9333ea;
+    font-size: 0.82rem;
+  }
+  a {
+    color: #9333ea;
+    font-weight: 500;
+    &:hover { color: #6b21a8; }
+  }
+  hr { border-color: #e9d5ff; }
+  .btn.btn-primary {
+    background: linear-gradient(135deg, #7e22ce, #9333ea);
+    border: none;
+    border-radius: 8px;
+    padding: 9px 32px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.3);
+    &:hover { background: linear-gradient(135deg, #6b21a8, #7e22ce); }
   }
 }
 

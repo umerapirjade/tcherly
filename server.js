@@ -75,6 +75,7 @@ const createApp = async () => {
   app.use("/api/auth", require("./routes/auth"));
   app.use("/api/courses", require("./routes/course"));
   app.use("/api/lessons", require("./routes/lesson"));
+  app.use("/api/student", require("./routes/student"));
   app.use("/api/misc", require("./routes/misc"));
   app.use("/api/sync", require("./routes/sync"));
   app.use("/api/*", (_, __, next) => next(require("http-errors")(404)));

@@ -1,6 +1,6 @@
-$blue: #5e50f9;
-$indigo: #6610f2;
-$purple: #6a008a;
+$blue: #9333ea;
+$indigo: #7e22ce;
+$purple: #9333ea;
 $pink: #e91e63;
 $red: #f96868;
 $orange: #f2a654;
@@ -36,18 +36,18 @@ $colors: (
 );
 
 $theme-colors: (
-  primary: #464dee,
-  secondary: #d8d8d8,
+  primary: #9333ea,
+  secondary: #e9d5ff,
   success: #0ddbb9,
   info: #0ad7f7,
   warning: #fcd53b,
   danger: #ee5b5b,
-  light: #d8d8d8,
-  dark: #001737
+  light: #f3e8ff,
+  dark: #3b0764
 );
 
 $theme-gradient-colors: (
-  primary: linear-gradient(230deg, #759bff, #843cf6),
+  primary: linear-gradient(230deg, #c084fc, #7e22ce),
   secondary: linear-gradient(to right, #e7ebf0, #868e96),
   success: linear-gradient(45deg, #7bffce, #30c93e),
   info: linear-gradient(to bottom, #0e4cfd, #6a8eff),
@@ -57,8 +57,8 @@ $theme-gradient-colors: (
   dark: linear-gradient(to right, #7d7979 0%, #000000 100%)
 );
 
-$content-bg: #f0f3f6;
-$border-color: #f1f6f8;
+$content-bg: #faf5ff;
+$border-color: #e9d5ff;
 
 $social-colors: (
   twitter: #2caae1,

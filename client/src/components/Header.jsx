@@ -151,14 +151,14 @@ const Header = ({ minifiedNav = false, pageName = "Feedback", lessonName = "", c
                 <NavDropdown alignRight className="nav-profile-drop" title={<i className="fas fa-user-alt" />} id="nav-profile-drop">
                   {user.feature_level !== "advanced" && (
                     <>
-                      <NavDropdown.Item active={false} onClick={handleShowUpgradeModal}>
-                        Upgrade
+                      <NavDropdown.Item active={false} onClick={handleShowUpgradeModal} className="upgrade-item">
+                        <i className="fas fa-arrow-circle-up mr-2" style={{ fontSize: "0.8rem" }} />Upgrade
                       </NavDropdown.Item>
                       <NavDropdown.Divider />
                     </>
                   )}
                   <NavDropdown.Item active={false} onClick={handleLogout}>
-                    Logout
+                    <i className="fas fa-sign-out-alt mr-2" style={{ fontSize: "0.8rem" }} />Logout
                   </NavDropdown.Item>
                 </NavDropdown>
               </>

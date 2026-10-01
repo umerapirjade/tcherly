@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import ReactPlayer from "react-player/lazy";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { BrowserView, MobileView, withOrientationChange } from "react-device-detect";
 import Layout from "components/Layout";
 import { CgClose } from "react-icons/cg";
+import { FaArrowLeft } from "react-icons/fa";
 import { useAuth } from "provider/auth";
 import Loader from "components/Loader";
 import { Alert, Button, Form, Modal } from "react-bootstrap";
@@ -14,6 +15,7 @@ import "../assets/styles/mobile-player.scss";
 import { useOptions } from "../utils/useOptions";
 import { ProvideStudentAuth, useStudentAuth } from "provider/student-auth";
 import StudentAuth from "components/student-auth";
+import QuizOverlay from "components/QuizOverlay";
 
 const playerOptions = {
   youtube: {
@@ -233,7 +235,6 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
   const videoOnBufferEnd = () => {};
 
   const handleFeedback = (key) => (e) => {
-    setPlaying(false);
     setData({
       feedback: key,
       timestamp,
@@ -266,13 +267,11 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
           setData(null);
           setOtherFeedback("");
           setOtherFeedbackModal(false);
-          setPlaying(true);
         });
   };
   const handleCaputureFeedback = (key) => (e) => {
     if (studentData)
       request("POST", "/lessons/" + lesson.id, { ...data, feedback_type: key, student_id: studentData._id }, { withCredentials: true })
-        .then(({ data }) => {})
         .catch((err) => {
           console.log(err);
         })
@@ -347,6 +346,12 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
   if (!lesson) return null;
   if (isPortrait)
     return (
+      <>
+      <div style={{ padding: "8px 16px", borderBottom: "1px solid #dee2e6", backgroundColor: "#fff" }}>
+        <Link to="/student" style={{ color: "#6c757d", display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: "0.88rem" }}>
+          <FaArrowLeft size={12} /> My Courses
+        </Link>
+      </div>
       <div className="row">
         <div className="col-md-6 col-lg-8 feedback-player mobile">
           <Modal show={otherFeedbackModal} onHide={handleOtherFeedbackCancel}>
@@ -448,6 +453,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
           )}
         </div>
       </div>
+      </>
     );
   if (isLandscape) {
     return (
@@ -675,6 +681,13 @@ function Player({ lesson }) {
   const [otherFeedbackModal, setOtherFeedbackModal] = useState(false);
   const [otherFeedback, setOtherFeedback] = useState("");
 
+  // Quiz state
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [activeQuiz, setActiveQuiz] = useState(null); // { question }
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizResult, setQuizResult] = useState(null); // true | false
+  const shownQuizIds = useRef(new Set());
+
   const { isLoggedIn, data: studentData, refresh, request } = useStudentAuth();
 
   const videoOnPlay = () => {
@@ -729,6 +742,17 @@ function Player({ lesson }) {
     }
 
     setTimestamp(currentTimestamp);
+
+    // Trigger quiz question at its timestamp (within a 2-second window)
+    const due = quizQuestions.find(
+      (q) => !shownQuizIds.current.has(String(q._id)) && Math.abs(currentTimestamp - q.timestamp) <= 2
+    );
+    if (due) {
+      shownQuizIds.current.add(String(due._id));
+      setPlaying(false);
+      setActiveQuiz({ question: due });
+      setQuizResult(null);
+    }
   };
 
   const videoOnBuffer = () => {
@@ -741,7 +765,6 @@ function Player({ lesson }) {
   };
 
   const handleFeedback = (key) => (e) => {
-    setPlaying(false);
     setData({
       feedback: key,
       timestamp,
@@ -773,7 +796,6 @@ function Player({ lesson }) {
           setData(null);
           setOtherFeedback("");
           setOtherFeedbackModal(false);
-          setPlaying(true);
         });
   };
 
@@ -785,7 +807,6 @@ function Player({ lesson }) {
         })
         .finally(() => {
           setData(null);
-          setPlaying(true);
         });
   };
   const handleOverlayClick = (e) => {
@@ -812,21 +833,29 @@ function Player({ lesson }) {
     refresh().catch(ignoreError);
   }, [refresh]);
 
-  // React.useEffect(() => {
-  //   let duration = 0;
+  // Fetch quiz questions once student is logged in
+  useEffect(() => {
+    if (!isLoggedIn || !lesson) return;
+    request("GET", `/student/quiz/${lesson.id}`, {}, { withCredentials: true })
+      .then(({ data }) => { if (data && data.success) setQuizQuestions(data.questions || []); })
+      .catch(ignoreError);
+  }, [isLoggedIn, lesson, request]);
 
-  //   if (playerRef.current) {
-  //     const _duration = playerRef.current.getCurrentTime();
+  const handleQuizSubmit = async (answer) => {
+    if (!activeQuiz) return;
+    setQuizSubmitting(true);
+    try {
+      const { data } = await request("POST", `/student/quiz/${activeQuiz.question._id}/answer`, { answer }, { withCredentials: true });
+      setQuizResult(!!(data && data.correct));
+    } catch { setQuizResult(false); }
+    finally { setQuizSubmitting(false); }
+  };
 
-  //     if (_duration) {
-  //       duration = _duration;
-  //     }
-  //   }
-
-  //   return () => {
-  //     if (isLoggedIn) request("POST", `/lessons/${lesson.id}/log`, { action: "lesson_leave", duration: duration, date_client: Date.now() }, { withCredentials: true });
-  //   };
-  // }, [lesson.id]);
+  const handleQuizContinue = () => {
+    setActiveQuiz(null);
+    setQuizResult(null);
+    setPlaying(true);
+  };
 
   if (!isLoggedIn)
     return (
@@ -853,9 +882,17 @@ function Player({ lesson }) {
   //   );
   if (!lesson) return null;
   return (
+    <>
+      {isLoggedIn && (
+        <div style={{ padding: "8px 20px", borderBottom: "1px solid #dee2e6", backgroundColor: "#fff" }}>
+          <Link to="/student" style={{ color: "#6c757d", display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: "0.88rem" }}>
+            <FaArrowLeft size={12} /> My Courses
+          </Link>
+        </div>
+      )}
     <div className="container-fluid">
       <div className="row">
-        <div className="col-md-6 col-lg-9 feedback-player">
+        <div className="col-md-6 col-lg-9 feedback-player" style={{ position: "relative" }}>
           <Modal show={otherFeedbackModal} onHide={handleOtherFeedbackCancel}>
             <Modal.Header closeButton closeLabel="Provide addtional feedback" />
             <Modal.Body>
@@ -885,6 +922,15 @@ function Player({ lesson }) {
                 <i className="fas fa-times" />
               </div>
             </div>
+          )}
+          {activeQuiz && (
+            <QuizOverlay
+              question={activeQuiz.question}
+              onSubmit={handleQuizSubmit}
+              submitting={quizSubmitting}
+              result={quizResult}
+              onContinue={handleQuizContinue}
+            />
           )}
           <ReactPlayer
             ref={playerRef}
@@ -966,6 +1012,7 @@ function Player({ lesson }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

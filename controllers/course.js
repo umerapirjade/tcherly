@@ -3,6 +3,19 @@ const Lesson = require("../database/models/lesson");
 const { getVideoDuration } = require("../utils/youtube");
 const { isValidObjectId, sendError, validationErrorMessage } = require("../handlers/misc");
 const { saveLessonWithUniqueSlug, deleteLessonsCascade } = require("./lesson");
+const { randomString } = require("../utils/random");
+
+// Uppercase alphanumeric without ambiguous chars (O/0, I/1) — easy to read and type.
+const JOIN_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+const generateUniqueJoinCode = async () => {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = randomString({ length: 6, characters: JOIN_CODE_CHARS });
+    const exists = await Course.exists({ join_code: code });
+    if (!exists) return code;
+  }
+  throw new Error("Could not generate a unique join code");
+};
 
 // Fields the public (student) lesson page needs. Bookmarks/analysis are teacher-only.
 const PUBLIC_LESSON_FIELDS = "_id id name desc youtube_link seconds minutes";
@@ -94,9 +107,11 @@ const createCourse = async (req, res) => {
       const isTaken = await Course.findOne({ name, user });
 
       if (!isTaken) {
+        const join_code = await generateUniqueJoinCode();
         const newCourse = await new Course({
           name,
           user,
+          join_code,
         }).save();
 
         return res.send({
@@ -303,6 +318,26 @@ const deleteCourse = async (req, res) => {
   }
 };
 
+const getJoinCode = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(404).send({ success: false, message: "Course not found" });
+
+    let course = await Course.findOne({ _id: id, user: req.user._id }).select("join_code name");
+    if (!course) return res.status(404).send({ success: false, message: "Course not found" });
+
+    // Back-fill a code for courses created before this feature was added.
+    if (!course.join_code) {
+      course.join_code = await generateUniqueJoinCode();
+      await course.save();
+    }
+
+    return res.json({ success: true, join_code: course.join_code });
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
 module.exports = {
   getAllByUser,
   getOneCourse,
@@ -312,4 +347,5 @@ module.exports = {
   editCourse,
   deleteCourse,
   checkLessonBelongsToUser,
+  getJoinCode,
 };

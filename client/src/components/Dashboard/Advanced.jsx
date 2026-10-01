@@ -7,8 +7,8 @@ import NewParticipation from "components/Analysis/NewCharts/Participation";
 import NewDetailedFeedback from "components/Analysis/NewCharts/DetailedFeedback";
 import OverviewChart from "components/Analysis/Charts/Overview";
 import { OverviewVideo, OverviewRange, OverviewButtons } from "components/Analysis/Overview";
-import QuestionGenerator, { QuestionGeneratorBasic } from "components/Analysis/QuestionGenerator";
-import ActionTracker, { ActionTrackerBasic } from "components/Analysis/ActionTracker";
+import ClickstreamPanel from "components/Analysis/ClickstreamPanel";
+import QuizAnalysisPanel from "components/Analysis/QuizAnalysisPanel";
 import useFeedback from "provider/feedback";
 import UpgradeBlock from "./UpgradeBlock";
 import { useAuth } from "provider/auth";
@@ -75,26 +75,10 @@ function AdvancedDashboard({ dummyPlayer = false }) {
         </div>
         <div className="td-bottom">
           <div className="td-questions">
-            <TeacherDashboardChild>
-              {isAdvanced ? (
-                <QuestionGenerator />
-              ) : (
-                <UpgradeBlock>
-                  <QuestionGeneratorBasic />
-                </UpgradeBlock>
-              )}
-            </TeacherDashboardChild>
+            <QuizAnalysisPanel />
           </div>
           <div className="td-actions">
-            <TeacherDashboardChild className="td-actions-tracker">
-              {isAdvanced ? (
-                <ActionTracker />
-              ) : (
-                <UpgradeBlock>
-                  <ActionTrackerBasic />
-                </UpgradeBlock>
-              )}
-            </TeacherDashboardChild>
+            <ClickstreamPanel />
           </div>
         </div>
       </div>

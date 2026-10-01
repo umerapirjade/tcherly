@@ -16,7 +16,18 @@ const CourseSchema = new Schema(
         type: ObjectId,
         ref: "lesson"
       }
-    ]
+    ],
+    students: [
+      {
+        type: ObjectId,
+        ref: "student"
+      }
+    ],
+    join_code: {
+      type: String,
+      unique: true,
+      sparse: true,
+    }
   },
   { timestamps: true }
 );

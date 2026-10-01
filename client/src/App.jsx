@@ -19,6 +19,8 @@ const ResearchPage = lazy(() => import("pages/research"));
 const TeacherGuidelinesPage = lazy(() => import("pages/teacher-guidelines"));
 const ResearcherPage = lazy(() => import("pages/researcher"));
 const VideoPage = lazy(() => import("pages/video"));
+const StudentDashboardPage = lazy(() => import("pages/student/dashboard"));
+const StudentCoursePage = lazy(() => import("pages/student/course"));
 
 import Loader from "components/Loader";
 import ServerUnreachable from "components/ServerUnreachable";
@@ -92,6 +94,8 @@ class App extends Component {
         <Route key="forgot-password" path="/password/forgot" component={ForgotPasswordPage} exact />
         <Route key="reset-password" path="/password/reset" component={ResetPasswordPage} exact />
         <Route key="lesson-id" path="/l/:id" component={LessonId} exact />
+        <Route key="student-dashboard" path="/student" component={StudentDashboardPage} exact />
+        <Route key="student-course" path="/student/courses/:id" component={StudentCoursePage} exact />
         <Route key="research" path="/research" component={ResearchPage} exact />
         <Route key="guidelines" path="/guidelines" component={TeacherGuidelinesPage} exact />
         <Route key="introduction" path="/introduction" component={VideoPage} exact />
@@ -123,11 +127,13 @@ class App extends Component {
         ))}
         <Redirect path="/password/forgot" to="/login" />
         <Redirect path="/password/reset" to="/login" />
-        <Redirect path="/register" to="/login" />
+        <Route path="/register" render={({ location }) => <Redirect to={getRedirectTarget(location)} />} />
         <Route path="/login" render={({ location }) => <Redirect to={getRedirectTarget(location)} />} />
         <Route key="terms" path="/terms" component={TermsPage} />
         <Route key="intro" path="/intro" component={IntroPage} />
         <Route key="introduction" path="/introduction" component={VideoPage} exact />
+        <Route key="student-dashboard" path="/student" component={StudentDashboardPage} exact />
+        <Route key="student-course" path="/student/courses/:id" component={StudentCoursePage} exact />
         <Route key="researcher" path="/researcher" component={ResearcherPage} />
         <Route key="default" component={NotFoundPage} />
       </Switch>

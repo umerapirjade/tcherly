@@ -15,7 +15,8 @@ const {
 } = require("../controllers/lesson");
 const { getLesson, checkLessonBelongsToUser,  } = require("../controllers/course");
 const { recordFeedback, getAllFeedbackForLesson, watchedVideo, exportFeedbackForLesson } = require("../controllers/feedback");
-const { logInteraction } = require('../controllers/log')
+const { logInteraction, getClickstream } = require('../controllers/log')
+const { getQuizQuestions, createQuizQuestion, updateQuizQuestion, deleteQuizQuestion, getQuizAnalysis } = require("../controllers/quiz");
 
 router.get("/:id", getLesson);
 router.get("/:id/feedback", verifyMiddleware, verifyResourceIsForUser(checkLessonBelongsToUser), getAllFeedbackForLesson);
@@ -25,6 +26,8 @@ router.post("/:id", studentVerifyMiddleware, recordFeedback);
 router.post("/:id/watched", studentVerifyMiddleware, watchedVideo);
 router.post("/:id/log", studentVerifyMiddleware, logInteraction);
 
+router.get("/:id/clickstream",     verifyMiddleware, getClickstream);
+router.get("/:id/quiz-analysis",   verifyMiddleware, getQuizAnalysis);
 router.post("/:id/analysis", verifyMiddleware, saveLessonAnalysis);
 
 router.put("/bookmark/save/:bookmark_id", verifyMiddleware, lessonSaveBookmark);
@@ -38,5 +41,11 @@ router.put("/:id/bookmark/switch", verifyMiddleware, lessonSwitchBookmark);
 router.put("/:id/bookmark/delete", verifyMiddleware, lessonDeleteBookmark);
 
 router.delete("/:id", verifyMiddleware, lessonDelete);
+
+// Quiz management (teacher)
+router.get("/:id/quiz",          verifyMiddleware, getQuizQuestions);
+router.post("/:id/quiz",         verifyMiddleware, createQuizQuestion);
+router.put("/:id/quiz/:qid",     verifyMiddleware, updateQuizQuestion);
+router.delete("/:id/quiz/:qid",  verifyMiddleware, deleteQuizQuestion);
 
 module.exports = router;

@@ -98,29 +98,35 @@ function QuestionGenerator() {
     if (currentBookmark) {
       setCurrentBookmark((cb) => {
         const result = Array.from(cb.questions);
-
-        if (result) {
-          result.splice(showModal.delete, 1);
-        }
-
-        request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-questions`, {
-          questions: result,
-        }).catch((err) => console.log(err));
-
+        if (result) result.splice(showModal.delete, 1);
+        request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-questions`, { questions: result }).catch((err) => console.log(err));
         return { ...cb, questions: result };
       });
     } else {
       setQuestions((qs) => {
         const result = Array.from(qs);
-        if (result) {
-          result.splice(showModal.delete, 1);
-          return result;
-        }
+        if (result) { result.splice(showModal.delete, 1); return result; }
         return qs;
       });
     }
-
     handleCloseModal();
+  };
+
+  const handleRemove = (k) => () => {
+    if (currentBookmark) {
+      setCurrentBookmark((cb) => {
+        const result = Array.from(cb.questions);
+        result.splice(k, 1);
+        request("PUT", `/lessons/bookmark/${currentBookmark._id}/edit-questions`, { questions: result }).catch((err) => console.log(err));
+        return { ...cb, questions: result };
+      });
+    } else {
+      setQuestions((qs) => {
+        const result = Array.from(qs);
+        result.splice(k, 1);
+        return result;
+      });
+    }
   };
 
   const handleShowModal = (type, id) => (e) => {
@@ -145,53 +151,45 @@ function QuestionGenerator() {
   return (
     <>
       <Modal centered show={showModal.add} onHide={handleCloseModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>Add questions</Modal.Title>
+        <Modal.Header closeButton style={{ background: "#3b0764", color: "#f3e8ff" }}>
+          <Modal.Title style={{ color: "#f3e8ff" }}>Add question</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form>
+          <Form className="login-form">
             <Form.Group controlId="add-question-name">
-              <Form.Label>Enter your question or finding here</Form.Label>
-              <Form.Control as="textarea" onChange={addFormik.handleChange} value={addFormik.values.name} name="name" type="text" />
+              <Form.Label>Question or finding</Form.Label>
+              <Form.Control as="textarea" rows={2} onChange={addFormik.handleChange} value={addFormik.values.name} name="name" />
             </Form.Group>
-            <Form.Group controlId="add-question-name">
-              <Form.Label>Enter your thoughts about what can be done based on above</Form.Label>
-              <Form.Control as="textarea" onChange={addFormik.handleChange} value={addFormik.values.action} name="action" type="text" />
+            <Form.Group controlId="add-question-action">
+              <Form.Label>What can be done?</Form.Label>
+              <Form.Control as="textarea" rows={2} onChange={addFormik.handleChange} value={addFormik.values.action} name="action" />
             </Form.Group>
           </Form>
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={handleCloseModal}>
-            Close
-          </Button>
-          <Button variant="primary" onClick={addFormik.handleSubmit}>
-            Save Changes
-          </Button>
+        <Modal.Footer style={{ borderTop: "1px solid #e9d5ff" }}>
+          <Button variant="outline-secondary" onClick={handleCloseModal}>Cancel</Button>
+          <Button style={{ background: "#9333ea", border: "none" }} onClick={addFormik.handleSubmit}>Save</Button>
         </Modal.Footer>
       </Modal>
       <Modal centered show={showModal.edit !== false} onHide={handleCloseModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>Edit question</Modal.Title>
+        <Modal.Header closeButton style={{ background: "#3b0764", color: "#f3e8ff" }}>
+          <Modal.Title style={{ color: "#f3e8ff" }}>Edit question</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form>
-            <Form.Group controlId="add-question-name">
-              <Form.Label>Enter your question or finding here</Form.Label>
-              <Form.Control as="textarea" onChange={editFormik.handleChange} value={editFormik.values.name} name="name" type="text" />
+          <Form className="login-form">
+            <Form.Group controlId="edit-question-name">
+              <Form.Label>Question or finding</Form.Label>
+              <Form.Control as="textarea" rows={2} onChange={editFormik.handleChange} value={editFormik.values.name} name="name" />
             </Form.Group>
-            <Form.Group controlId="add-question-name">
-              <Form.Label>Enter your thoughts about what can be done based on above</Form.Label>
-              <Form.Control as="textarea" onChange={editFormik.handleChange} value={editFormik.values.action} name="action" type="text" />
+            <Form.Group controlId="edit-question-action">
+              <Form.Label>What can be done?</Form.Label>
+              <Form.Control as="textarea" rows={2} onChange={editFormik.handleChange} value={editFormik.values.action} name="action" />
             </Form.Group>
           </Form>
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={handleCloseModal}>
-            Close
-          </Button>
-          <Button variant="primary" onClick={editFormik.handleSubmit}>
-            Save Changes
-          </Button>
+        <Modal.Footer style={{ borderTop: "1px solid #e9d5ff" }}>
+          <Button variant="outline-secondary" onClick={handleCloseModal}>Cancel</Button>
+          <Button style={{ background: "#9333ea", border: "none" }} onClick={editFormik.handleSubmit}>Save</Button>
         </Modal.Footer>
       </Modal>
       <Modal centered show={showModal.delete !== false} onHide={handleCloseModal}>
@@ -220,48 +218,58 @@ function QuestionGenerator() {
               <div className="c2">Question (or finding) based on analysis</div>
               <div className="c3">What can be done?</div>
               <div className="c4">
-                <div className="btn btn-none nd-btn-save" onClick={handleShowModal("add")}>
-                  Add Question
-                </div>
+                <button
+                  onClick={handleShowModal("add")}
+                  style={{
+                    background: "#9333ea",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "3px 10px",
+                    fontSize: "inherit",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <i className="fas fa-plus" style={{ fontSize: "0.75em" }} /> Add
+                </button>
               </div>
             </div>
           </div>
           <div className="td-qgat-rows">
-            {currentBookmark
-              ? currentBookmark.questions.map((question, k) => {
-                  return (
-                    <div className="td-qgat" key={k}>
-                      <div className="c1">{k + 1}</div>
-                      <div className="c2">{question.name}</div>
-                      <div className="c3">{question.action}</div>
-                      <div className="c4">
-                        <div title="Edit" className="btn btn-sm btn-edit mr-2" onClick={handleShowModal("edit", k)}>
-                          <i className="fas fa-pen" />
-                        </div>
-                        <div title="Delete" className="btn btn-sm btn-delete" onClick={handleShowModal("delete", k)}>
-                          <i className="fas fa-trash" />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              : questions.map((question, k) => {
-                  return (
-                    <div className="td-qgat" key={k}>
-                      <div className="c1">{k + 1}</div>
-                      <div className="c2">{question.name}</div>
-                      <div className="c3">{question.action}</div>
-                      <div className="c4">
-                        <div title="Edit" className="btn btn-edit mr-2">
-                          <i className="far fa-pen" />
-                        </div>
-                        <div title="Delete" className="btn btn-delete">
-                          <i className="far fa-trash" />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+            {(currentBookmark ? currentBookmark.questions : questions).map((question, k) => (
+              <div className="td-qgat" key={k}>
+                <div className="c1">{k + 1}</div>
+                <div className="c2">{question.name}</div>
+                <div className="c3">{question.action}</div>
+                <div className="c4" style={{ flexDirection: "column", gap: 3 }}>
+                  <div title="Edit" className="btn btn-sm btn-edit" onClick={handleShowModal("edit", k)}>
+                    <i className="fas fa-pen" />
+                  </div>
+                  <button
+                    title="Remove"
+                    onClick={handleRemove(k)}
+                    style={{
+                      background: "#fce7f3",
+                      border: "none",
+                      borderRadius: 4,
+                      padding: "1px 6px",
+                      fontSize: "0.7em",
+                      color: "#b91c1c",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    ✕ Remove
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

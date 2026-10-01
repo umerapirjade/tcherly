@@ -285,12 +285,12 @@ const OverviewChart = ({ active = {} }) => {
         <ComposedChart data={formatData()} onClick={handleToggleDetails}>
           <CartesianGrid strokeDasharray="1 3" />
 
-          <XAxis tickCount={10} dataKey="minute" domain={axesRange.x} type="number" allowDecimals={false} fontSize="calc(0.45vh + .45vw)">
-            <Label value="Time in minutes" offset={-4} position="insideBottom" fontSize="calc(0.45vh + .45vw)" />
+          <XAxis tickCount={10} dataKey="minute" domain={axesRange.x} type="number" allowDecimals={false} fontSize="calc(0.45vh + 0.45 * var(--tc-vw))">
+            <Label value="Time in minutes" offset={-4} position="insideBottom" fontSize="calc(0.45vh + 0.45 * var(--tc-vw))" />
           </XAxis>
 
-          <YAxis tickFormatter={getTickFormatter} width={43} domain={axesRange.y} type="number" allowDecimals={false} fontSize="calc(0.45vh + .45vw)">
-            <Label value="Number of students" position="insideLeft" height={40} angle={-90} fontSize="calc(0.45vh + .45vw)" hanging="left" />
+          <YAxis tickFormatter={getTickFormatter} width={43} domain={axesRange.y} type="number" allowDecimals={false} fontSize="calc(0.45vh + 0.45 * var(--tc-vw))">
+            <Label value="Number of students" position="insideLeft" height={40} angle={-90} fontSize="calc(0.45vh + 0.45 * var(--tc-vw))" hanging="left" />
           </YAxis>
 
           <Tooltip activeFields={active} content={<CustomTooltip />} details={showDetails} yMax={yMax} />

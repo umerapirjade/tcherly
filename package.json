@@ -44,6 +44,7 @@
     "dev": "concurrently \"yarn dev:c\" \"yarn dev:s\"",
     "install:c": "cd client && yarn",
     "generate": "node data/generate.js",
+    "seed:demo": "node data/seed-demo.js",
     "migrate:slugs": "node scripts/migrate-lesson-slugs.js",
     "test": "jest --runInBand"
   },

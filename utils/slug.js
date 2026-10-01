@@ -4,15 +4,18 @@ const { randomString } = require("./random");
 
 const SLUG_SUFFIX_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+// Keeps only [a-z0-9] words joined by "-": anything else (?, #, /, %, quotes, ...) would break the
+// /l/:slug URL, e.g. "?" starts the query string so the lesson can't be found.
 const dashIt = (x = "") => {
   if (typeof x !== "string") return "";
-  var arr = x
+  return x
     .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9\s]+/g, "")
     .trim()
-    .replace("&", "and")
-    .replace(/,|@|-|\]|\[|\)|\(+/g, "")
-    .split(" ");
-  return arr.join("-");
+    .split(/\s+/)
+    .filter(Boolean)
+    .join("-");
 };
 
 const genName = (name = "") => name + "-" + randomString({ length: 6, characters: SLUG_SUFFIX_CHARS });

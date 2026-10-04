@@ -78,3 +78,32 @@ describe("student sign-in limits (a class shares one NAT IP)", () => {
     }
   });
 });
+
+describe("join course limits (join codes can't be brute-forced)", () => {
+  test("wrong join codes are counted per student: 21st failure → 429, classmates on the same IP unaffected", async () => {
+    const F = require("./helpers/factories");
+    const guesser = await F.signupStudent(app);
+    const classmate = await F.signupStudent(app);
+
+    const statuses = [];
+    for (let i = 0; i < 21; i++) {
+      statuses.push((await request(app).post("/api/student/join").set("Authorization", guesser.auth).send({ join_code: `NOPE${i}` })).status);
+    }
+    expect(statuses.slice(0, 20).every((s) => s === 404)).toBe(true);
+    expect(statuses[20]).toBe(429);
+
+    const other = await request(app).post("/api/student/join").set("Authorization", classmate.auth).send({ join_code: "NOPE" });
+    expect(other.status).toBe(404);
+  });
+
+  test("successful joins are not counted", async () => {
+    const express = require("express");
+    const { joinCourseLimiter } = require("../middleware/rate-limit");
+    const mini = express();
+    mini.use((req, res, next) => ((req.user = { _id: "student-1" }), next()));
+    mini.post("/join", joinCourseLimiter({ perAccountMax: 2, perIpMax: 2 }), (req, res) => res.status(200).send({ success: true }));
+    for (let i = 0; i < 5; i++) {
+      expect((await request(mini).post("/join")).status).toBe(200);
+    }
+  });
+});

@@ -5,6 +5,18 @@ const { isValidObjectId } = require("../handlers/misc");
 const { onLogFail } = require("../utils/log");
 
 const CLICKSTREAM_ACTIONS = ["play", "pause", "forward_seek", "backward_seek"];
+// Upper bound for the clickstream timeline when the lesson length is unknown (24 hours of video).
+const MAX_TIMELINE_MINUTES = 24 * 60;
+
+const lessonLengthSeconds = (lesson) => lesson.seconds || (lesson.minutes || 0) * 60;
+
+/** Playback position from the client, clamped to [0, lesson length] (0 when not a finite number). */
+const clampDuration = (value, lesson) => {
+  const duration = Number(value);
+  if (!Number.isFinite(duration) || duration < 0) return 0;
+  const length = lessonLengthSeconds(lesson);
+  return length ? Math.min(duration, length) : duration;
+};
 
 /** @type { import('express').RequestHandler } */
 const logInteraction = async (req, res) => {
@@ -29,7 +41,7 @@ const logInteraction = async (req, res) => {
         date_client: date_client,
       };
 
-      data.duration = req.body.duration || 0;
+      data.duration = clampDuration(req.body.duration, lesson);
 
       try {
         await new Log(data).save();
@@ -80,9 +92,10 @@ const getClickstream = async (req, res) => {
       minuteMap[m][_id.action] = count;
     });
 
-    // Fill gaps so timeline is continuous up to lesson length
+    // Fill gaps so timeline is continuous up to lesson length. Bounded by the lesson length so
+    // out-of-range positions stored by older versions can't blow up the timeline.
     const totalMinutes = lesson.minutes ? Math.ceil(lesson.minutes) : 0;
-    const maxMinute = Math.max(totalMinutes, ...Object.keys(minuteMap).map(Number), 0);
+    const maxMinute = totalMinutes || Math.min(MAX_TIMELINE_MINUTES, Object.keys(minuteMap).reduce((max, m) => Math.max(max, Number(m)), 0));
     const byMinute = [];
     for (let m = 0; m <= maxMinute; m++) {
       const row = minuteMap[m] || { play: 0, pause: 0, forward_seek: 0, backward_seek: 0 };
@@ -126,7 +139,7 @@ const getClickstream = async (req, res) => {
     const [backStudents, skipStudents, pauseStudents] = await Promise.all(["backward_seek", "forward_seek", "pause"].map(distinctFor));
 
     const opened = Math.max(furthest.length, (lesson.watched || []).length);
-    const lengthSeconds = lesson.seconds || (lesson.minutes || 0) * 60;
+    const lengthSeconds = lessonLengthSeconds(lesson);
     const studentsByMinute = byMinute.map(({ minute }) => ({
       minute,
       back: 0,

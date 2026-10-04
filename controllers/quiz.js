@@ -14,6 +14,49 @@ const findOwnedLesson = (id, userId) =>
     : Lesson.findOne({ id, user: userId });
 
 const VALID_TYPES = ["mcq", "msq", "true_false"];
+const MAX_QUESTION_LENGTH = 1000;
+const MAX_OPTION_LENGTH = 500;
+const MAX_OPTIONS = 10;
+
+const notFound = (res, message) => res.status(404).send({ success: false, message });
+const badRequest = (res, message) => res.status(400).send({ success: false, message });
+
+/**
+ * Validates a question (on create, or the stored question with the update merged in) and
+ * normalizes its options. Same rules as the quiz manager form: mcq and true_false need exactly
+ * one correct option, msq at least one. Returns { error } or { value }.
+ */
+const validateQuestionInput = ({ question, type, options, timestamp }, lesson) => {
+  if (typeof question !== "string" || !question.trim()) return { error: "question is required." };
+  if (question.length > MAX_QUESTION_LENGTH) return { error: `question must be at most ${MAX_QUESTION_LENGTH} characters.` };
+  if (!VALID_TYPES.includes(type)) return { error: "Invalid type. Use mcq, msq or true_false." };
+
+  // Number(null), Number("") and Number(true) are finite, so check the raw type as well
+  const seconds = typeof timestamp === "number" || typeof timestamp === "string" ? Number(timestamp) : NaN;
+  if (timestamp === "" || !Number.isFinite(seconds) || seconds < 0) return { error: "timestamp must be a number of seconds (0 or more)." };
+  const lessonLength = lesson.seconds || (lesson.minutes || 0) * 60;
+  if (lessonLength && seconds > lessonLength) return { error: "timestamp is past the end of the video." };
+
+  if (!Array.isArray(options)) return { error: "options must be a list." };
+  let finalOptions;
+  if (type === "true_false") {
+    finalOptions = [
+      { text: "True",  isCorrect: !!(options[0] && options[0].isCorrect === true) },
+      { text: "False", isCorrect: !!(options[1] && options[1].isCorrect === true) },
+    ];
+  } else {
+    if (options.length < 2 || options.length > MAX_OPTIONS) return { error: `Provide between 2 and ${MAX_OPTIONS} options.` };
+    const hasText = (o) => o && typeof o.text === "string" && o.text.trim() && o.text.length <= MAX_OPTION_LENGTH;
+    if (!options.every(hasText)) return { error: `Every option needs text (at most ${MAX_OPTION_LENGTH} characters).` };
+    finalOptions = options.map((o) => ({ text: o.text.trim(), isCorrect: o.isCorrect === true }));
+  }
+
+  const correctCount = finalOptions.filter((o) => o.isCorrect).length;
+  if (type === "msq" && correctCount < 1) return { error: "Mark at least one correct option." };
+  if (type !== "msq" && correctCount !== 1) return { error: "Mark exactly one correct option." };
+
+  return { value: { question: question.trim(), type, options: finalOptions, timestamp: seconds } };
+};
 
 // ── Teacher: list questions ──────────────────────────────────────────────────
 
@@ -36,28 +79,12 @@ const createQuizQuestion = async (req, res) => {
     const lesson = await findOwnedLesson(req.params.id, req.user._id);
     if (!lesson) return res.status(404).send({ success: false, message: "Lesson not found." });
 
-    const { question, type, options, timestamp } = req.body;
-
-    if (!question || !type || timestamp === undefined || timestamp === null) {
-      return res.status(400).send({ success: false, message: "question, type and timestamp are required." });
-    }
-    if (!VALID_TYPES.includes(type)) {
-      return res.status(400).send({ success: false, message: "Invalid type. Use mcq, msq or true_false." });
-    }
-
-    const finalOptions = type === "true_false"
-      ? [
-          { text: "True",  isCorrect: !!(options && options[0] && options[0].isCorrect) },
-          { text: "False", isCorrect: !!(options && options[1] && options[1].isCorrect) },
-        ]
-      : (Array.isArray(options) ? options : []);
+    const { error, value } = validateQuestionInput(req.body, lesson);
+    if (error) return badRequest(res, error);
 
     const newQ = await new QuizQuestion({
       lesson: lesson._id,
-      question,
-      type,
-      options: finalOptions,
-      timestamp: Number(timestamp),
+      ...value,
       created_by: req.user._id,
     }).save();
 
@@ -74,26 +101,20 @@ const updateQuizQuestion = async (req, res) => {
     const lesson = await findOwnedLesson(req.params.id, req.user._id);
     if (!lesson) return res.status(404).send({ success: false, message: "Lesson not found." });
 
+    if (!isValidObjectId(req.params.qid)) return notFound(res, "Question not found.");
     const existing = await QuizQuestion.findOne({ _id: req.params.qid, lesson: lesson._id });
-    if (!existing) return res.status(404).send({ success: false, message: "Question not found." });
+    if (!existing) return notFound(res, "Question not found.");
 
-    const { question, type, options, timestamp } = req.body;
+    // Fields left out of the request keep their stored value; the result is validated as a whole
+    const fields = ["question", "type", "options", "timestamp"];
+    const merged = {};
+    fields.forEach((f) => (merged[f] = req.body[f] !== undefined ? req.body[f] : existing[f]));
+    const { error, value } = validateQuestionInput(merged, lesson);
+    if (error) return badRequest(res, error);
 
-    if (question  !== undefined) existing.question  = question;
-    if (timestamp !== undefined) existing.timestamp = Number(timestamp);
-    if (type      !== undefined) {
-      if (!VALID_TYPES.includes(type)) return res.status(400).send({ success: false, message: "Invalid type." });
-      existing.type = type;
-    }
-    if (options !== undefined) {
-      existing.options = existing.type === "true_false"
-        ? [
-            { text: "True",  isCorrect: !!(options[0] && options[0].isCorrect) },
-            { text: "False", isCorrect: !!(options[1] && options[1].isCorrect) },
-          ]
-        : options;
-    }
-
+    // Normalizing rebuilds the options (new _ids), so only replace them when options or type changed
+    const { options, ...rest } = value;
+    existing.set(req.body.options !== undefined || req.body.type !== undefined ? value : rest);
     await existing.save();
     return res.json({ success: true, question: existing });
   } catch (err) {
@@ -108,6 +129,7 @@ const deleteQuizQuestion = async (req, res) => {
     const lesson = await findOwnedLesson(req.params.id, req.user._id);
     if (!lesson) return res.status(404).send({ success: false, message: "Lesson not found." });
 
+    if (!isValidObjectId(req.params.qid)) return notFound(res, "Question not found.");
     const deleted = await QuizQuestion.findOneAndDelete({ _id: req.params.qid, lesson: lesson._id });
     if (!deleted) return res.status(404).send({ success: false, message: "Question not found." });
 
@@ -144,22 +166,27 @@ const getStudentQuizQuestions = async (req, res) => {
 
 const submitQuizAnswer = async (req, res) => {
   try {
-    const question = await QuizQuestion.findById(req.params.qid);
-    if (!question) return res.status(404).send({ success: false, message: "Question not found." });
+    const { qid } = req.params;
+    if (!isValidObjectId(qid)) return notFound(res, "Question not found.");
+    const question = await QuizQuestion.findById(qid);
+    if (!question) return notFound(res, "Question not found.");
+    // Deleting a lesson leaves its questions behind; they must not be answerable
+    if (!(await Lesson.exists({ _id: question.lesson }))) return notFound(res, "Question not found.");
 
-    const { answer } = req.body; // single option _id (mcq/tf) or array of _ids (msq)
+    // Single option _id (mcq/tf) or a non-empty array of option _ids (msq), all from this question
+    const { answer } = req.body;
+    const optionIds = question.options.map((o) => String(o._id));
+    const isOptionId = (a) => typeof a === "string" && optionIds.includes(a);
     let correct = false;
 
-    if (question.type === "mcq" || question.type === "true_false") {
-      const opt = question.options.id(answer);
-      correct = !!(opt && opt.isCorrect);
-    } else if (question.type === "msq") {
-      const selected = (Array.isArray(answer) ? answer : [answer]).map(String);
+    if (question.type === "msq") {
+      if (!Array.isArray(answer) || !answer.length || !answer.every(isOptionId)) return badRequest(res, "Invalid answer.");
+      const selected = [...new Set(answer)];
       const correctIds = question.options.filter((o) => o.isCorrect).map((o) => String(o._id));
-      correct =
-        correctIds.length > 0 &&
-        correctIds.length === selected.length &&
-        correctIds.every((id) => selected.includes(id));
+      correct = correctIds.length === selected.length && correctIds.every((id) => selected.includes(id));
+    } else {
+      if (!isOptionId(answer)) return badRequest(res, "Invalid answer.");
+      correct = question.options.id(answer).isCorrect === true;
     }
 
     // Save the answer for analytics

@@ -17,6 +17,7 @@ const createLimiter = ({ max, message, skipSuccessfulRequests = false, keyGenera
 
 const authMessage = "Too many attempts, please try again later.";
 const forgotMessage = "Too many password reset requests, please try again later.";
+const joinMessage = "Too many invalid join codes, please try again later.";
 
 // Each export is a separate limiter (separate counter per IP).
 // Sign in: 20 failed attempts per 15 minutes per IP (successful logins are not counted, so a
@@ -45,6 +46,19 @@ const studentSignupLimiter = () => createLimiter({ max: 300, message: authMessag
 // Forgot password: 5 requests per 15 minutes per IP
 const forgotPasswordLimiter = () => createLimiter({ max: 5, message: forgotMessage });
 
+// Join course (runs after student auth): wrong join codes are counted per student account
+// (20 / 15 min) plus a per-IP ceiling (300 / 15 min, a class shares one NAT IP), so codes can't be
+// guessed by brute force. Successful joins are not counted. Returns an array of middlewares.
+const joinCourseLimiter = ({ perAccountMax = 20, perIpMax = 300 } = {}) => [
+  createLimiter({ max: perIpMax, message: joinMessage, skipSuccessfulRequests: true }),
+  createLimiter({
+    max: perAccountMax,
+    message: joinMessage,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => `student|${req.user && req.user._id}`,
+  }),
+];
+
 module.exports = {
   createLimiter,
   signinLimiter,
@@ -52,4 +66,5 @@ module.exports = {
   studentSigninLimiter,
   studentSignupLimiter,
   forgotPasswordLimiter,
+  joinCourseLimiter,
 };

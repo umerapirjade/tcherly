@@ -4,7 +4,7 @@ const Bookmark = require("../database/models/bookmark");
 const Feedback = require("../database/models/feedback");
 const { isValidObjectId, sendError } = require("../handlers/misc");
 const { genSlug } = require("../utils/slug");
-const { getVideoDuration } = require("../utils/youtube");
+const { getVideoInfo } = require("../utils/video");
 
 const FEEDBACK_TYPES = ["easy", "difficult", "engaging", "boring"];
 const LINECHART_TYPES = [...FEEDBACK_TYPES, "net_difficult", "net_engaging"];
@@ -201,19 +201,20 @@ const lessonEdit = async (req, res) => {
     if (!lesson) return notFound(res);
 
     if (lesson.youtube_link !== youtube_link) {
-      let durationSeconds;
+      let video;
       try {
-        durationSeconds = await getVideoDuration(youtube_link);
+        video = await getVideoInfo(youtube_link);
       } catch (error) {
         return res.status(400).send({
           success: false,
-          message: error && error.expose ? error.message : "Could not fetch YouTube video details.",
+          message: error && error.expose ? error.message : "Could not fetch video details.",
         });
       }
 
       lesson.youtube_link = youtube_link;
-      lesson.seconds = durationSeconds;
-      lesson.minutes = Math.ceil(durationSeconds / 60);
+      lesson.video_source = video.source;
+      lesson.seconds = video.seconds;
+      lesson.minutes = Math.ceil(video.seconds / 60);
     }
     if (lesson.desc !== desc) lesson.desc = desc;
 

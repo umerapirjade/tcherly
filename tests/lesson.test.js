@@ -101,7 +101,7 @@ describe("public lesson view (student)", () => {
     expect(res.status).toBe(200);
     expect(res.body.lesson).toBeDefined();
     expect(res.body.lesson.name).toBe(lesson.name);
-    const allowed = ["_id", "id", "name", "desc", "youtube_link", "seconds", "minutes"];
+    const allowed = ["_id", "id", "name", "desc", "youtube_link", "video_source", "seconds", "minutes"];
     expect(Object.keys(res.body.lesson).filter((k) => !allowed.includes(k))).toEqual([]);
     const text = JSON.stringify(res.body);
     expect(text).not.toContain("SECRET-BOOKMARK-QUESTION");

@@ -16,9 +16,13 @@ const {
 const { getLesson, checkLessonBelongsToUser,  } = require("../controllers/course");
 const { recordFeedback, getAllFeedbackForLesson, watchedVideo, exportFeedbackForLesson } = require("../controllers/feedback");
 const { logInteraction, getClickstream } = require('../controllers/log')
+const { streamLessonVideo } = require("../controllers/video");
+const { videoStreamLimiter } = require("../middleware/rate-limit");
 const { getQuizQuestions, createQuizQuestion, updateQuizQuestion, deleteQuizQuestion, getQuizAnalysis } = require("../controllers/quiz");
 
 router.get("/:id", getLesson);
+// Public Google Drive lessons are streamed through the server (the ".mp4" lets react-player pick its HTML5 player)
+router.get("/:id/video.mp4", videoStreamLimiter(), streamLessonVideo);
 router.get("/:id/feedback", verifyMiddleware, verifyResourceIsForUser(checkLessonBelongsToUser), getAllFeedbackForLesson);
 router.get("/:id/feedback-export", rVerifyMiddleware, exportFeedbackForLesson);
 

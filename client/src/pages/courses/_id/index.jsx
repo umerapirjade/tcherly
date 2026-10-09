@@ -12,6 +12,7 @@ import { useFormik } from "formik";
 import * as Yup from "yup";
 import { useCallback } from "react";
 import { getErrorMessage } from "handler/api";
+import { isValidVideoUrl, parseDriveFileId, drivePreviewUrl } from "utils/video";
 
 const playerOptions = {
   youtube: {
@@ -20,11 +21,16 @@ const playerOptions = {
   },
 };
 
-function isValidYTUrl(url = "") {
-  var p = /^(?:https?:\/\/)?(?:m\.|www\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})(?:\S+)?$/;
-  if (url.match(p)) return url.match(p)[1];
-  return false;
+/** Preview in the add/edit lesson form: Drive's own embed for Drive links, react-player for YouTube. */
+function VideoPreview({ url, onError }) {
+  const driveId = parseDriveFileId(url);
+  if (driveId) {
+    return <iframe title="Video preview" src={drivePreviewUrl(driveId)} width="100%" height="100%" allow="autoplay; fullscreen" style={{ border: 0 }} />;
+  }
+  return <ReactPlayer onError={onError} height="100%" width="100%" controls config={playerOptions} url={url} />;
 }
+
+const VIDEO_LINK_HINT = 'Google Drive videos must be MP4 files shared as "Anyone with the link".';
 
 function fallbackCopyTextToClipboard(text) {
   return new Promise((resolve, reject) => {
@@ -70,16 +76,16 @@ const addLessonValidationSchema = Yup.object({
   name: Yup.string().required("Name is required"),
   desc: Yup.string(),
   youtube_link: Yup.string()
-    .required("YouTube link is required")
-    .test("YouTube URL", "Please enter a valid youtube link", (value) => isValidYTUrl(value)),
+    .required("Video link is required")
+    .test("Video URL", "Please enter a valid YouTube or Google Drive link", (value) => isValidVideoUrl(value)),
 });
 
 const editLessonValidationSchema = Yup.object({
   name: Yup.string().required("Name is required"),
   desc: Yup.string(),
   youtube_link: Yup.string()
-    .required("YouTube link is required")
-    .test("YouTube URL", "Please enter a valid youtube link", (value) => isValidYTUrl(value)),
+    .required("Video link is required")
+    .test("Video URL", "Please enter a valid YouTube or Google Drive link", (value) => isValidVideoUrl(value)),
 });
 
 const editCourseValidationSchema = Yup.object({
@@ -491,8 +497,8 @@ function CourseInfo({ id = "" }) {
                 </Form.Group>
                 <Form.Group controlId="lesson-yt_link">
                   <Form.Label>
-                    <span>YouTube URL </span>
-                    <a href="https://support.google.com/youtube/answer/57741" target="_blank" rel="noopener noreferrer">
+                    <span>Video URL (YouTube or Google Drive) </span>
+                    <a href="https://support.google.com/drive/answer/2494822" target="_blank" rel="noopener noreferrer" title="How to share a Google Drive file">
                       <i className="fas fa-info-circle" />
                     </a>
                   </Form.Label>
@@ -504,15 +510,19 @@ function CourseInfo({ id = "" }) {
                     value={formik.values.youtube_link}
                     placeholder="https://www.youtube.com/watch?v=7PXyg2r-k2c"
                   />
-                  {formik.touched.youtube_link && formik.errors.youtube_link && <Form.Text className="text-danger">{formik.errors.youtube_link}</Form.Text>}
+                  {formik.touched.youtube_link && formik.errors.youtube_link ? (
+                    <Form.Text className="text-danger">{formik.errors.youtube_link}</Form.Text>
+                  ) : (
+                    <Form.Text className="text-muted">{VIDEO_LINK_HINT}</Form.Text>
+                  )}
                 </Form.Group>
               </div>
               <div className="col-lg-6 lesson-add-video">
                 {formik.values.youtube_link && !formik.errors.youtube_link ? (
-                  <ReactPlayer onError={handleVideoError} height="100%" width="100%" controls config={playerOptions} url={formik.values.youtube_link} />
+                  <VideoPreview onError={handleVideoError} url={formik.values.youtube_link} />
                 ) : (
                   <div className="h-100 d-flex justify-content-center align-items-center border border-light">
-                    <div className="lead">Enter a valid YouTube URL for preview</div>
+                    <div className="lead">Enter a YouTube or Google Drive link for preview</div>
                   </div>
                 )}
               </div>
@@ -557,8 +567,8 @@ function CourseInfo({ id = "" }) {
                 </Form.Group>
                 <Form.Group controlId="lesson-yt_link">
                   <Form.Label>
-                    <span>YouTube URL </span>
-                    <a href="https://support.google.com/youtube/answer/57741" target="_blank" rel="noopener noreferrer">
+                    <span>Video URL (YouTube or Google Drive) </span>
+                    <a href="https://support.google.com/drive/answer/2494822" target="_blank" rel="noopener noreferrer" title="How to share a Google Drive file">
                       <i className="fas fa-info-circle" />
                     </a>
                   </Form.Label>
@@ -570,15 +580,19 @@ function CourseInfo({ id = "" }) {
                     value={editFormik.values.youtube_link}
                     placeholder="https://www.youtube.com/watch?v=7PXyg2r-k2c"
                   />
-                  {editFormik.touched.youtube_link && editFormik.errors.youtube_link && <Form.Text className="text-danger">{editFormik.errors.youtube_link}</Form.Text>}
+                  {editFormik.touched.youtube_link && editFormik.errors.youtube_link ? (
+                    <Form.Text className="text-danger">{editFormik.errors.youtube_link}</Form.Text>
+                  ) : (
+                    <Form.Text className="text-muted">{VIDEO_LINK_HINT}</Form.Text>
+                  )}
                 </Form.Group>
               </div>
               <div className="col-lg-6 lesson-add-video">
                 {editFormik.values.youtube_link && !editFormik.errors.youtube_link ? (
-                  <ReactPlayer onError={handleVideoError} height="100%" width="100%" controls config={playerOptions} url={editFormik.values.youtube_link} />
+                  <VideoPreview onError={handleVideoError} url={editFormik.values.youtube_link} />
                 ) : (
                   <div className="h-100 d-flex justify-content-center align-items-center border border-light">
-                    <div className="lead">Enter a valid YouTube URL for preview</div>
+                    <div className="lead">Enter a YouTube or Google Drive link for preview</div>
                   </div>
                 )}
               </div>

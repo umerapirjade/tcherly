@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Modal, Button, Alert, Spinner, Badge } from "react-bootstrap";
 import ReactPlayer from "react-player/lazy";
 import { useAuth } from "provider/auth";
+import { lessonVideoUrl } from "utils/video";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -564,7 +565,7 @@ export default function QuizManager({ lesson, show, onHide }) {
               {lesson && lesson.youtube_link ? (
                 <ReactPlayer
                   ref={playerRef}
-                  url={lesson.youtube_link}
+                  url={lessonVideoUrl(lesson)}
                   width="100%"
                   height="214px"
                   controls

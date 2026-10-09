@@ -1,6 +1,6 @@
 const Course = require("../database/models/course");
 const Lesson = require("../database/models/lesson");
-const { getVideoDuration } = require("../utils/youtube");
+const { getVideoInfo } = require("../utils/video");
 const { isValidObjectId, sendError, validationErrorMessage } = require("../handlers/misc");
 const { saveLessonWithUniqueSlug, deleteLessonsCascade } = require("./lesson");
 const { randomString } = require("../utils/random");
@@ -18,7 +18,7 @@ const generateUniqueJoinCode = async () => {
 };
 
 // Fields the public (student) lesson page needs. Bookmarks/analysis are teacher-only.
-const PUBLIC_LESSON_FIELDS = "_id id name desc youtube_link seconds minutes";
+const PUBLIC_LESSON_FIELDS = "_id id name desc youtube_link video_source seconds minutes";
 
 const lessonQueryFromParam = (id) => {
   if (typeof id !== "string" || !id) return null;
@@ -154,7 +154,7 @@ const addNewLesson = async (req, res) => {
         message: "Provide required fields",
       });
 
-    // Check ownership before the (slow) YouTube lookup
+    // Check ownership before the (slow) video lookup
     const courseExists = await Course.exists({ _id: id, user: user_id });
     if (!courseExists) {
       return res.status(404).send({
@@ -163,19 +163,21 @@ const addNewLesson = async (req, res) => {
       });
     }
 
-    let durationSeconds;
+    let video;
     try {
-      durationSeconds = await getVideoDuration(youtube_link);
+      video = await getVideoInfo(youtube_link);
     } catch (error) {
       return res.status(400).send({
         success: false,
-        message: error && error.expose ? error.message : "Could not fetch YouTube video details.",
+        message: error && error.expose ? error.message : "Could not fetch video details.",
       });
     }
+    const durationSeconds = video.seconds;
 
     const newLesson = new Lesson({
       name,
       youtube_link,
+      video_source: video.source,
       desc,
       seconds: durationSeconds,
       minutes: Math.ceil(durationSeconds / 60),

@@ -59,6 +59,10 @@ const joinCourseLimiter = ({ perAccountMax = 20, perIpMax = 300 } = {}) => [
   }),
 ];
 
+// Drive video streaming: players send a request per seek/buffer refill, and a class shares one NAT
+// IP, so the ceiling is high (3000 requests / 15 min per IP); it only stops runaway clients.
+const videoStreamLimiter = () => createLimiter({ max: 3000, message: "Too many video requests, please try again later." });
+
 module.exports = {
   createLimiter,
   signinLimiter,
@@ -67,4 +71,5 @@ module.exports = {
   studentSignupLimiter,
   forgotPasswordLimiter,
   joinCourseLimiter,
+  videoStreamLimiter,
 };

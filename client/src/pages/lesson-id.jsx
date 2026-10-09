@@ -16,6 +16,7 @@ import { useOptions } from "../utils/useOptions";
 import { ProvideStudentAuth, useStudentAuth } from "provider/student-auth";
 import StudentAuth from "components/student-auth";
 import QuizOverlay from "components/QuizOverlay";
+import { lessonVideoUrl } from "utils/video";
 
 const playerOptions = {
   youtube: {
@@ -29,6 +30,10 @@ const playerOptions = {
       autohide: 0,
       autoplay: 1,
     },
+  },
+  // Google Drive lessons (HTML5 video streamed through the server)
+  file: {
+    attributes: { controlsList: "nodownload", preload: "metadata" },
   },
 };
 
@@ -398,7 +403,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
             style={playerStyles}
             controls
             config={playerOptions}
-            url={lesson.youtube_link}
+            url={lessonVideoUrl(lesson)}
           />
         </div>
         <div className="col-md-6 col-lg-4 card feedback-recorder mobile">
@@ -505,7 +510,7 @@ function MobilePlayer({ lesson, isLandscape, isPortrait }) {
             style={playerStyles}
             controls
             config={playerOptions}
-            url={lesson.youtube_link}
+            url={lessonVideoUrl(lesson)}
           />
           {beenPlayed && !playing && (
             <div className="feedback-menu feedback-recorder">
@@ -949,7 +954,7 @@ function Player({ lesson }) {
             style={playerStyles}
             controls
             config={playerOptions}
-            url={lesson.youtube_link}
+            url={lessonVideoUrl(lesson)}
           />
         </div>
         <div className="col card feedback-recorder">

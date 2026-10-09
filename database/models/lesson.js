@@ -26,8 +26,15 @@ const LessonSchema = new Schema(
       type: ObjectId,
       ref: "course"
     },
+    // The video link as the teacher entered it: a YouTube link or a public Google Drive link
     youtube_link: {
       type: String
+    },
+    // "drive" videos are streamed through GET /api/lessons/:id/video.mp4 (see utils/drive.js)
+    video_source: {
+      type: String,
+      enum: ["youtube", "drive"],
+      default: "youtube"
     },
     watched: [
       {

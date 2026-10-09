@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import ReactPlayer from "react-player/lazy";
 import { useAuth } from "provider/auth";
 import useFeedback from "provider/feedback";
+import { lessonVideoUrl } from "utils/video";
 
 const playerStyles = {};
 
@@ -72,7 +73,7 @@ function Player({ lesson, cantPlay }) {
   return (
     <div className="nd-overview-video">
       {cantPlay ? (
-        <ReactPlayer ref={playerRef} light onClickPreview={handleCantplay} playing={playing} height="100%" style={playerStyles} controls={false} config={playerOpts} url={lesson.youtube_link} />
+        <ReactPlayer ref={playerRef} light onClickPreview={handleCantplay} playing={playing} height="100%" style={playerStyles} controls={false} config={playerOpts} url={lessonVideoUrl(lesson)} />
       ) : (
         <ReactPlayer
           ref={playerRef}
@@ -98,7 +99,7 @@ function Player({ lesson, cantPlay }) {
           style={playerStyles}
           controls={true}
           config={playerOpts}
-          url={lesson.youtube_link}
+          url={lessonVideoUrl(lesson)}
         />
       )}
     </div>

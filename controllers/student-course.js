@@ -1,6 +1,6 @@
 const Course = require("../database/models/course");
 
-const PUBLIC_LESSON_FIELDS = "_id id name desc youtube_link seconds minutes";
+const PUBLIC_LESSON_FIELDS = "_id id name desc youtube_link video_source seconds minutes";
 
 const joinCourse = async (req, res) => {
   try {

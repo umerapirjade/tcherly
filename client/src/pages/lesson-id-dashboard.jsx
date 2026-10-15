@@ -5,6 +5,7 @@ import { useAuth } from "provider/auth";
 import Loader from "components/Loader";
 import useFeedback, { FeedbackProvider } from "provider/feedback";
 import "../assets/styles/teacher-dashboard.scss";
+import "../assets/styles/teacher-dashboard-theme.scss";
 
 import AdvancedDashboard from "components/Dashboard/Advanced";
 import Tour from "components/Tour";

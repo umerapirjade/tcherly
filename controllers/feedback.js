@@ -413,6 +413,11 @@ const generateVennFeedback = (classFeedback) => {
     },
   };
 
+  // Every reason picked, with who picked it and in which minute (for student counts per reason)
+  const reasonEntries = { easy: [], boring: [], difficult: [], engaging: [] };
+  const addReasons = (kind, details, userId, minute) =>
+    details.filter((f) => f != null).forEach((key) => reasonEntries[kind].push({ key, userId, minute }));
+
   const userAggregate = {};
 
   if (Array.isArray(classFeedback)) {
@@ -490,12 +495,14 @@ const generateVennFeedback = (classFeedback) => {
           if (minute_user_feedback.easy) {
             vennData.easy += minute_user_feedback.easy;
             feedbackTypes.easy.push(...minute_user_feedback.easy_details.filter((f) => f != null));
+            addReasons("easy", minute_user_feedback.easy_details, userId, minute.minute);
             feedbackTypes.others.easy.push(...minute_user_feedback.easy_others);
             easySet.add(userId); // TODO: Check this
           }
           if (minute_user_feedback.boring) {
             vennData.boring += minute_user_feedback.boring;
             feedbackTypes.boring.push(...minute_user_feedback.boring_details.filter((f) => f != null));
+            addReasons("boring", minute_user_feedback.boring_details, userId, minute.minute);
             feedbackTypes.others.boring.push(...minute_user_feedback.boring_others);
             if (minute_user_feedback.easy) {
               vennData.boring_easy += Math.max(minute_user_feedback.boring, minute_user_feedback.easy) || 0;
@@ -510,6 +517,7 @@ const generateVennFeedback = (classFeedback) => {
           if (minute_user_feedback.difficult) {
             vennData.difficult += minute_user_feedback.difficult;
             feedbackTypes.difficult.push(...minute_user_feedback.difficult_details.filter((f) => f != null));
+            addReasons("difficult", minute_user_feedback.difficult_details, userId, minute.minute);
             feedbackTypes.others.difficult.push(...minute_user_feedback.difficult_others);
             if (minute_user_feedback.easy) {
               vennData.difficult_easy += Math.max(minute_user_feedback.difficult, minute_user_feedback.easy) || 0;
@@ -528,6 +536,7 @@ const generateVennFeedback = (classFeedback) => {
           if (minute_user_feedback.engaging) {
             vennData.engaging += minute_user_feedback.engaging;
             feedbackTypes.engaging.push(...minute_user_feedback.engaging_details.filter((f) => f != null));
+            addReasons("engaging", minute_user_feedback.engaging_details, userId, minute.minute);
             feedbackTypes.others.engaging.push(...minute_user_feedback.engaging_others);
             if (minute_user_feedback.easy) {
               vennData.engaging_easy += Math.max(minute_user_feedback.engaging, minute_user_feedback.easy) || 0;
@@ -540,46 +549,55 @@ const generateVennFeedback = (classFeedback) => {
     });
   }
 
-  const reducerFn = (countObj, value) => {
-    if (typeof countObj.total === "undefined") {
-      countObj.total = 0;
-    }
-    if (typeof countObj[value] === "undefined") {
-      countObj[value] = 1;
-    } else {
-      countObj[value] += 1;
-    }
-    countObj.total += 1;
-    return countObj;
-  };
+  // Per reason: clicks (`value`, `percentage`: block size, unchanged), distinct `students`, and the
+  // `minutes` it was picked in with distinct students per minute ([{ minute, students }]).
+  // The top three reasons are kept; the rest are merged into one `others` entry.
+  const sortAndCount = (entries = []) => {
+    const groups = {};
+    entries.forEach(({ key, userId, minute }) => {
+      if (!groups[key]) groups[key] = { key, value: 0, users: new Set(), minutes: {} };
+      const group = groups[key];
+      group.value += 1;
+      group.users.add(userId);
+      if (!group.minutes[minute]) group.minutes[minute] = new Set();
+      group.minutes[minute].add(userId);
+    });
+    const total = entries.length;
+    const minuteList = (minutes) =>
+      Object.keys(minutes)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map((minute) => ({ minute, students: minutes[minute].size }));
 
-  const sortAndCount = (array = []) => {
-    const ob = array.reduce(reducerFn, {});
-    const total = ob.total;
-    delete ob.total;
-    const result = Object.entries(ob)
-      .sort(([, a], [, b]) => b - a)
-      .map(([k, v]) => {
-        return {
-          key: k,
-          value: v,
-          percentage: Math.round((v * 10000) / total) / 100,
-        };
+    const sorted = Object.values(groups).sort((a, b) => b.value - a.value);
+    const toResult = (g) => ({
+      key: g.key,
+      value: g.value,
+      percentage: Math.round((g.value * 10000) / total) / 100,
+      students: g.users.size,
+      minutes: minuteList(g.minutes),
+    });
+
+    const result1 = sorted.slice(0, 3).map(toResult);
+    const rest = sorted.slice(3);
+
+    const restUsers = new Set();
+    const restMinutes = {};
+    rest.forEach((g) => {
+      g.users.forEach((u) => restUsers.add(u));
+      Object.entries(g.minutes).forEach(([m, users]) => {
+        if (!restMinutes[m]) restMinutes[m] = new Set();
+        users.forEach((u) => restMinutes[m].add(u));
       });
-
-    const result1 = result.slice(0, 3);
-    const result2 = result.slice(3, result.length);
-
-    result1.push(
-      result2.reduce(
-        (ob, val) => {
-          ob.values.push(val);
-          ob.percentage += val.percentage;
-          return ob;
-        },
-        { others: true, percentage: 0, values: [] }
-      )
-    );
+    });
+    const restValues = rest.map(toResult);
+    result1.push({
+      others: true,
+      percentage: restValues.reduce((sum, v) => sum + v.percentage, 0),
+      values: restValues,
+      students: restUsers.size,
+      minutes: minuteList(restMinutes),
+    });
 
     return result1;
   };
@@ -607,10 +625,10 @@ const generateVennFeedback = (classFeedback) => {
     },
 
     detailed: {
-      easy: sortAndCount(feedbackTypes.easy),
-      boring: sortAndCount(feedbackTypes.boring),
-      difficult: sortAndCount(feedbackTypes.difficult),
-      engaging: sortAndCount(feedbackTypes.engaging),
+      easy: sortAndCount(reasonEntries.easy),
+      boring: sortAndCount(reasonEntries.boring),
+      difficult: sortAndCount(reasonEntries.difficult),
+      engaging: sortAndCount(reasonEntries.engaging),
       others: feedbackTypes.others,
     },
   };

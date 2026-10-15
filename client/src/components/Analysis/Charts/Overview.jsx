@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { ComposedChart, Scatter, Line, ReferenceArea, Label, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import useFeedback from "provider/feedback";
+import { useAuth } from "provider/auth";
 
 const colors = {
   difficult: "#FF7785",
@@ -101,17 +102,10 @@ const CustomTooltip = ({ active, payload, activeFields = {}, details = false, yM
         </div>
 
         <p style={{ marginTop: ".8rem" }}>
-          {details ? (
-            <span>
-              Click on the chart <br />
-              to hide details
-            </span>
-          ) : (
-            <span>
-              Click on the chart <br />
-              to show more
-            </span>
-          )}
+          <span>
+            Click to select <br />
+            this minute
+          </span>
         </p>
       </div>
     );
@@ -134,14 +128,29 @@ const CustomizedDot = (props) => {
 };
 
 const OverviewChart = ({ active = {} }) => {
-  const { data, range } = useFeedback();
+  const { data, range, setRange, lesson, setHasChanges, activated, setAct } = useFeedback();
+  const { user, setShowUpgradeModal } = useAuth();
 
   const [fading, setFading] = useState(false);
   const [axesRange, setAxesRange] = useState({ x: ["auto", "auto"], y: ["auto", "auto"] });
-  const [showDetails, setShowDetails] = useState(false);
+  // Per-student detail dots; the chart click now selects a minute instead of toggling these.
+  const [showDetails] = useState(false);
 
-  const handleToggleDetails = () => {
-    setShowDetails((s) => !s);
+  // Clicking a point selects that one minute: point "m" is the minute (m-1)–m (see CustomTooltip),
+  // so the range becomes [m-1, m]. Same effect as dragging the range slider there.
+  const handleSelectMinute = (e) => {
+    if (!e || e.activeLabel === undefined || e.activeLabel === null) return;
+    if (user.feature_level !== "advanced") {
+      setShowUpgradeModal(true);
+      return;
+    }
+    const lastMinute = lesson && lesson.minutes ? lesson.minutes : Infinity;
+    const end = Math.min(Math.max(1, Math.round(Number(e.activeLabel))), lastMinute);
+    if (!Number.isFinite(end)) return;
+    if (range[0] === end - 1 && range[1] === end) return;
+    setAct(activated);
+    setRange([end - 1, end]);
+    setHasChanges(true);
   };
   const sub = useRef(true);
   const timer = useRef(null);
@@ -282,7 +291,7 @@ const OverviewChart = ({ active = {} }) => {
       </div> */}
       <FadingContainer show={fading} />
       <ResponsiveContainer>
-        <ComposedChart data={formatData()} onClick={handleToggleDetails}>
+        <ComposedChart data={formatData()} onClick={handleSelectMinute} style={{ cursor: "pointer" }}>
           <CartesianGrid strokeDasharray="1 3" />
 
           <XAxis tickCount={10} dataKey="minute" domain={axesRange.x} type="number" allowDecimals={false} fontSize="calc(0.45vh + 0.45 * var(--tc-vw))">

@@ -56,10 +56,14 @@ function DetailedFeedbackChart() {
       name: feedbackSubTypes[d.key],
       others: d.others,
       percentage: d.percentage,
+      students: d.students || 0,
+      minutes: d.minutes || [],
       values: d.values
         ? d.values.map((dVal) => ({
             name: feedbackSubTypes[dVal.key],
             percentage: dVal.percentage,
+            students: dVal.students || 0,
+            minutes: dVal.minutes || [],
           }))
         : null,
     }));
@@ -127,6 +131,26 @@ function DetailedFeedbackChart() {
   );
 }
 
+const studentsLabel = (n) => `${n} student${n === 1 ? "" : "s"}`;
+// Minute buckets are 1-based: minute 15 covers 14:00–15:00 of the video.
+const minuteLabel = (m) => `${m - 1}–${m} min`;
+
+/** "Complex terms (jargon): 8 students" plus when they said it, per minute. */
+function ReasonDetail({ name, students, minutes = [] }) {
+  return (
+    <div>
+      <div>
+        {name}: <strong>{studentsLabel(students)}</strong>
+      </div>
+      {minutes.length > 0 && (
+        <div className="text-muted" style={{ fontSize: "0.8em" }}>
+          {minutes.map((m) => `${minuteLabel(m.minute)}: ${m.students}`).join(" · ")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InnerFeedback({ divisions = [] }) {
   return (
     <>
@@ -138,17 +162,13 @@ function InnerFeedback({ divisions = [] }) {
                 d.values.map((dVal, dKey) => {
                   return (
                     <React.Fragment key={dKey}>
-                      <div>
-                        {dVal.name} (<strong>{dVal.percentage}%</strong>)
-                      </div>
+                      <ReasonDetail name={dVal.name} students={dVal.students} minutes={dVal.minutes} />
                       {dKey < d.values.length - 1 && <hr className="my-1" />}
                     </React.Fragment>
                   );
                 })
               ) : (
-                <div>
-                  {d.name} (<strong>{d.percentage}%</strong>)
-                </div>
+                <ReasonDetail name={d.name} students={d.students} minutes={d.minutes} />
               )}
             </Popover.Content>
           </Popover>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer } from "recharts";
+import { ComposedChart, Bar, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ReferenceLine, ResponsiveContainer } from "recharts";
 import { useAuth } from "provider/auth";
 import useFeedback from "provider/feedback";
 import { PanelHeader, Stat, PanelSkeleton, PanelState, fmtMin, pct, useSelection, useFocusRange, errorText } from "./panelKit";
@@ -7,10 +7,11 @@ import { PanelHeader, Stat, PanelSkeleton, PanelState, fmtMin, pct, useSelection
 // The dashboard's own purples: slider #9333ea, slider track #7c77a5, header #3b0764, borders #e9d5ff
 const C = {
   back: "#9333ea",
-  skip: "#7c77a5",
+  skip: "#b8b3cc",
   pause: "#3b0764",
   reachedFill: "#e9d5ff",
-  reachedLine: "#9333ea",
+  reachedLine: "#c084fc",
+  quiz: "#7c77a5",
   grid: "#e4e0f0",
   axis: "#6c757d",
   band: "#e9d5ff",
@@ -18,30 +19,29 @@ const C = {
 
 const MIN_STUDENTS_FOR_MOMENT = 3;
 
-/** Merges adjacent minutes with the same signal into moments like "Jumped back to 7:00–9:00". */
+// One plain-language takeaway per kind of behaviour, strongest first
+const KINDS = [
+  { key: "back", verb: "went back to", icon: "fa-undo-alt", hint: "likely hard to follow" },
+  { key: "skip", verb: "skipped ahead to", icon: "fa-forward", hint: "the part before may be slow or already familiar" },
+  { key: "pause", verb: "paused at", icon: "fa-pause", hint: "not for a quiz; maybe to think or take notes" },
+];
+
+/** The strongest moment for each kind: adjacent minutes with at least 60% of that kind's peak, merged. */
 function findMoments(rows, opened) {
-  const kinds = [
-    { key: "back", label: "Jumped back to", icon: "fa-undo-alt", hint: "Often a sign the part was hard or worth a second look" },
-    { key: "skip", label: "Skipped ahead at", icon: "fa-forward", hint: "Students moved past this part" },
-    { key: "pause", label: "Paused at", icon: "fa-pause", hint: "Students stopped here, to think, take notes or step away" },
-  ];
   const moments = [];
-  for (const kind of kinds) {
+  for (const kind of KINDS) {
     const values = rows.map((r) => r[kind.key]);
     const max = Math.max(0, ...values);
+    if (max < MIN_STUDENTS_FOR_MOMENT) continue;
     const threshold = Math.max(MIN_STUDENTS_FOR_MOMENT, Math.ceil(max * 0.6));
-    let i = 0;
-    while (i < rows.length) {
-      if (values[i] >= threshold) {
-        let j = i;
-        while (j + 1 < rows.length && values[j + 1] >= threshold) j++;
-        const peak = Math.max(...values.slice(i, j + 1));
-        moments.push({ ...kind, from: rows[i].minute, to: rows[j].minute + 1, peak, share: pct(peak, opened) });
-        i = j + 1;
-      } else i++;
-    }
+    const peakAt = values.indexOf(max);
+    let i = peakAt;
+    let j = peakAt;
+    while (i > 0 && values[i - 1] >= threshold) i--;
+    while (j + 1 < rows.length && values[j + 1] >= threshold) j++;
+    moments.push({ ...kind, from: rows[i].minute, to: rows[j].minute + 1, peak: max, share: pct(max, opened) });
   }
-  return moments.sort((a, b) => b.peak - a.peak).slice(0, 4);
+  return moments.sort((a, b) => b.peak - a.peak);
 }
 
 function ChartTip({ active, payload, opened }) {
@@ -49,10 +49,10 @@ function ChartTip({ active, payload, opened }) {
   const r = payload[0].payload;
   return (
     <div className="tc-tip">
-      <div className="tc-tip-title num">{fmtMin(r.minute)}–{fmtMin(r.minute + 1)}</div>
-      <div className="tc-tip-row"><span className="sw" style={{ background: C.back, width: 8, height: 8, borderRadius: 2 }} />Jumped back here<b className="num">{r.back}</b></div>
-      <div className="tc-tip-row"><span className="sw" style={{ background: "#fff", border: `1.5px solid ${C.skip}`, width: 8, height: 8, borderRadius: 2 }} />Skipped ahead to here<b className="num">{r.skip}</b></div>
-      <div className="tc-tip-row"><span className="sw" style={{ background: C.pause, width: 8, height: 8, borderRadius: "50%" }} />Paused here<b className="num">{r.pause}</b></div>
+      <div className="tc-tip-title num">{fmtMin(r.minute)}–{fmtMin(r.minute + 1)}{r.quiz ? ` · ${r.quiz}` : ""}</div>
+      <div className="tc-tip-row"><span className="sw" style={{ background: C.back, width: 8, height: 8, borderRadius: 2 }} />Went back to here<b className="num">{r.back}</b></div>
+      <div className="tc-tip-row"><span className="sw" style={{ background: C.skip, width: 8, height: 8, borderRadius: 2 }} />Skipped ahead to here<b className="num">{r.skip}</b></div>
+      <div className="tc-tip-row"><span className="sw" style={{ background: C.pause, width: 8, height: 8, borderRadius: "50%" }} />Paused here (not for a quiz)<b className="num">{r.pause}</b></div>
       <div className="tc-tip-row"><span className="sw" style={{ background: C.reachedFill, border: `1.5px solid ${C.reachedLine}`, width: 8, height: 8, borderRadius: 2 }} />Still watching<b className="num">{r.reached} of {opened}</b></div>
       <div className="tc-tip-hint"><i className="fas fa-mouse-pointer" /> Click to watch this minute</div>
     </div>
@@ -101,30 +101,31 @@ export default function ClickstreamPanel() {
     if (!data) return null;
     const st = data.students;
     const opened = st ? st.opened : data.summary.unique_students;
+    // Quiz labels per minute ("Q1", "Q2 Q3") for the axis markers
+    const quizByMinute = {};
+    (data.quiz_times || []).forEach((t, i) => {
+      const m = Math.floor(t / 60);
+      quizByMinute[m] = (quizByMinute[m] ? quizByMinute[m] + " " : "") + `Q${i + 1}`;
+    });
     const rows = (data.students_by_minute || (data.by_minute || []).map((m) => ({ minute: m.minute, back: m.backward_seek, skip: m.forward_seek, pause: m.pause, reached: 0 })))
       // The last bucket is often a partial minute past the end of the video
       .filter((r) => !lesson || !lesson.minutes || r.minute < lesson.minutes)
-      .map((r) => ({ ...r, skipNeg: -r.skip, reachedPct: pct(r.reached, opened) }));
-    const inSel = rows.filter((r) => r.minute >= sel.from && r.minute < sel.to);
-    const peakIn = (key) => inSel.reduce((best, r) => (r[key] > (best ? best[key] : 0) ? r : best), null);
+      .map((r) => ({ ...r, reachedPct: pct(r.reached, opened), quiz: quizByMinute[r.minute] }));
     return {
       studentsBased: !!st,
       opened,
       rows,
       st,
+      quizMinutes: Object.keys(quizByMinute).map(Number).filter((m) => m < rows.length),
       moments: findMoments(rows, opened),
-      peakBack: peakIn("back"),
-      peakSkip: peakIn("skip"),
-      peakPause: peakIn("pause"),
       maxMagnitude: Math.max(1, ...rows.map((r) => Math.max(r.back, r.skip))),
-      maxPause: Math.max(1, ...rows.map((r) => r.pause)),
     };
-  }, [data, lesson, sel.from, sel.to]);
+  }, [data, lesson]);
 
   const header = (
     <PanelHeader
       title="Clickstream"
-      info="Where students jumped back, skipped ahead or paused, counted in students (not clicks). Seeks are shown where students landed. Click any minute to watch it."
+      info="How students moved through the video, counted in students (not clicks). Bars show where students went back to or skipped ahead to; the shaded area shows how many were still watching. Pauses for quiz pop-ups are left out. Click any minute to watch it."
     >
       {refreshing && <span className="tc-spinner" aria-label="Refreshing" />}
     </PanelHeader>
@@ -151,13 +152,11 @@ export default function ClickstreamPanel() {
     );
 
   if (!model.opened)
-    return shell(<PanelState icon="fa-play-circle" title="No one has watched this lesson yet" text="Share the student link to see where students jump back, skip or pause." />);
+    return shell(<PanelState icon="fa-play-circle" title="No one has watched this lesson yet" text="Share the student link to see where students go back, skip or pause." />);
 
   const { st, opened } = model;
   const selTo = Math.min(sel.to, model.rows.length) - 1;
   const lim = Math.ceil(model.maxMagnitude / 10) * 10;
-  const inSel = (m) => sel.partial && m >= sel.from && m < sel.to;
-  const cols = { gridTemplateColumns: `repeat(${model.rows.length}, 1fr)` };
 
   return shell(
     <>
@@ -171,99 +170,76 @@ export default function ClickstreamPanel() {
         {st && st.reached_end !== null && (
           <Stat value={`${pct(st.reached_end, opened)}%`} label="watched to the end" info={`${st.reached_end} of ${opened} students (estimated from the furthest point each reached).`} />
         )}
-        <Stat value={st ? st.jumped_back : "—"} label="jumped back" info="Students who went back to an earlier point at least once; often a sign a part was hard." />
-        <Stat value={st ? st.skipped : "—"} label="skipped ahead" info="Students who jumped forward past part of the video." />
-        <Stat value={st ? st.paused : "—"} label="paused" info="Students who paused at least once." />
-        <span className="tc-stats-of" title="Students who opened the lesson">of {opened}</span>
+        <Stat value={st ? st.jumped_back : "—"} label="rewatched a part" info="Students who went back to an earlier point at least once; often a sign a part was hard." />
+        <Stat value={st ? st.skipped : "—"} label="skipped a part" info="Students who jumped forward past part of the video." />
+        <span className="tc-stats-of" title="Students who opened the lesson">of {opened} students</span>
       </div>
 
-      <div className="tc-lanes" role="group" aria-label={`Viewing behaviour per minute over the ${model.rows.length}-minute video`}>
-        {model.studentsBased && (
-          <>
-            <div className="tc-lane-label">Still watching</div>
-            <div className="tc-strip is-reach" style={cols}>
-              {model.rows.map((r) => (
-                <button
-                  type="button"
-                  key={r.minute}
-                  className={"tc-strip-cell" + (inSel(r.minute) ? " is-sel" : "")}
-                  onClick={() => focusRange(r.minute, r.minute + 1)}
-                  title={`${fmtMin(r.minute)}: ${r.reached} of ${opened} still watching (${r.reachedPct}%)`}
-                  aria-label={`${fmtMin(r.minute)}: ${r.reached} of ${opened} still watching`}
-                >
-                  <span style={{ height: `${Math.max(2, r.reachedPct)}%` }} />
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        <div className="tc-lane-label">Paused</div>
-        <div className="tc-strip is-pause" style={cols}>
-          {model.rows.map((r) => {
-            const d = r.pause ? 4 + 9 * (r.pause / model.maxPause) : 0;
-            return (
-              <button
-                type="button"
-                key={r.minute}
-                className={"tc-strip-cell" + (inSel(r.minute) ? " is-sel" : "")}
-                onClick={() => focusRange(r.minute, r.minute + 1)}
-                title={`${fmtMin(r.minute)}: ${r.pause} student${r.pause === 1 ? "" : "s"} paused`}
-                aria-label={`${fmtMin(r.minute)}: ${r.pause} students paused`}
-              >
-                {d > 0 && <span style={{ width: d, height: d }} />}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="tc-lane-label is-split">
-          <span><i className="sw" style={{ background: C.back }} />Jumped back</span>
-          <span><i className="sw" style={{ background: "#fff", border: `1.5px solid ${C.skip}` }} />Skipped to</span>
-        </div>
-        <div className="tc-chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={model.rows}
-              margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
-              stackOffset="sign"
-              onClick={(e) => { if (e && e.activeLabel !== undefined) focusRange(e.activeLabel, e.activeLabel + 1); }}
-            >
-              <CartesianGrid vertical={false} stroke={C.grid} />
-              {sel.partial && <ReferenceArea x1={sel.from} x2={selTo} fill={C.band} fillOpacity={0.55} ifOverflow="extendDomain" />}
-              <XAxis dataKey="minute" tickFormatter={fmtMin} tick={{ fill: C.axis, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={28} height={20} />
-              <YAxis orientation="right" domain={[-lim, lim]} ticks={[-lim, 0, lim]} tickFormatter={(v) => Math.abs(v)} tick={{ fill: C.axis, fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
-              <ReferenceLine y={0} stroke="#acaab8" />
-              <Bar dataKey="back" fill={C.back} radius={[3, 3, 0, 0]} maxBarSize={18} stackId="s" />
-              <Bar dataKey="skipNeg" fill="#fff" stroke={C.skip} strokeWidth={1.25} radius={[0, 0, 3, 3]} maxBarSize={18} stackId="s" />
-              <Tooltip content={<ChartTip opened={opened} />} cursor={{ fill: "rgba(147, 51, 234, 0.07)" }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="tc-chips" aria-label="Moments to review">
-        <span className="tc-chips-label">Review</span>
+      <ul className="tc-insights" aria-label="What stands out">
         {model.moments.length ? (
           model.moments.map((m) => {
             const inRange = sel.partial && m.from < sel.to && m.to > sel.from;
+            const range = `${fmtMin(m.from)}–${fmtMin(m.to)}`;
             return (
-              <button
-                type="button"
-                key={m.key + m.from}
-                className={`tc-chip is-${m.key}` + (inRange ? " is-sel" : "")}
-                onClick={() => focusRange(m.from, m.to)}
-                title={`${m.label} ${fmtMin(m.from)}–${fmtMin(m.to)}: up to ${m.peak} of ${opened} students (${m.share}%) in one minute. ${m.hint}. Click to watch.`}
-              >
-                <i className={`fas ${m.icon}`} aria-hidden="true" />
-                <span className="num">{fmtMin(m.from)}–{fmtMin(m.to)}</span>
-                <b className="num">{m.peak}</b>
-              </button>
+              <li key={m.key}>
+                <button
+                  type="button"
+                  className={`tc-insight is-${m.key}` + (inRange ? " is-sel" : "")}
+                  onClick={() => focusRange(m.from, m.to)}
+                  title={`Up to ${m.peak} of ${opened} students (${m.share}%) in one minute. Click to watch.`}
+                >
+                  <i className={`fas ${m.icon} tc-insight-icon`} aria-hidden="true" />
+                  <span className="tc-insight-text">
+                    <b className="num">{m.to - m.from > 1 ? "Up to " : ""}{m.peak} students</b> {m.verb} <b className="num">{range}</b>
+                    <span className="tc-insight-hint"> · {m.hint}</span>
+                  </span>
+                  <span className="tc-insight-watch"><i className="fas fa-play" aria-hidden="true" /> Watch</span>
+                </button>
+              </li>
             );
           })
         ) : (
-          <span className="tc-chips-none">No moment stands out; viewing was fairly even.</span>
+          <li className="tc-insights-none">No moment stands out; viewing was fairly even.</li>
         )}
+      </ul>
+
+      <div className="tc-legend" aria-hidden="true">
+        <span><i className="sw" style={{ background: C.back }} />Went back to</span>
+        <span><i className="sw" style={{ background: C.skip }} />Skipped ahead to</span>
+        {model.studentsBased && <span><i className="sw" style={{ background: C.reachedFill, border: `1.5px solid ${C.reachedLine}` }} />Still watching</span>}
+        {model.quizMinutes.length > 0 && <span><b className="tc-legend-q">Q</b>Quiz</span>}
+      </div>
+      <div className="tc-chart" role="group" aria-label={`Students going back or skipping ahead per minute over the ${model.rows.length}-minute video`}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
+            data={model.rows}
+            margin={{ top: 14, right: 0, bottom: 0, left: 0 }}
+            barGap={1}
+            onClick={(e) => { if (e && e.activeLabel !== undefined) focusRange(e.activeLabel, e.activeLabel + 1); }}
+          >
+            <CartesianGrid vertical={false} stroke={C.grid} />
+            {sel.partial && <ReferenceArea yAxisId="students" x1={sel.from} x2={selTo} fill={C.band} fillOpacity={0.55} ifOverflow="extendDomain" />}
+            <XAxis dataKey="minute" tickFormatter={fmtMin} tick={{ fill: C.axis, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={28} height={20} />
+            <YAxis yAxisId="students" orientation="right" domain={[0, lim]} ticks={[0, lim / 2, lim]} allowDecimals={false} tick={{ fill: C.axis, fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
+            <YAxis yAxisId="reach" hide domain={[0, 100]} />
+            {model.studentsBased && (
+              <Area yAxisId="reach" dataKey="reachedPct" type="stepAfter" fill={C.reachedFill} fillOpacity={0.22} stroke={C.reachedLine} strokeWidth={1} isAnimationActive={false} />
+            )}
+            {model.quizMinutes.map((m) => (
+              <ReferenceLine
+                key={m}
+                yAxisId="students"
+                x={m}
+                stroke={C.quiz}
+                strokeDasharray="2 3"
+                label={{ value: model.rows[m].quiz, position: "top", fill: C.quiz, fontSize: 10, fontWeight: 600 }}
+              />
+            ))}
+            <Bar yAxisId="students" dataKey="back" fill={C.back} radius={[3, 3, 0, 0]} maxBarSize={14} />
+            <Bar yAxisId="students" dataKey="skip" fill={C.skip} radius={[3, 3, 0, 0]} maxBarSize={14} />
+            <Tooltip content={<ChartTip opened={opened} />} cursor={{ fill: "rgba(147, 51, 234, 0.07)" }} />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     </>
   );

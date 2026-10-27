@@ -48,14 +48,68 @@ const STUDENT_NAMES = [
   "Arjun Nair", "Kavya Reddy", "Ishaan Gupta", "Meera Joshi", "Rahul Desai", "Diya Kapoor",
   "Karan Malhotra", "Pooja Verma", "Siddharth Rao", "Neha Bhatt", "Aditya Kumar", "Riya Sen",
   "Varun Chopra", "Tanvi Shah", "Nikhil Jain", "Aisha Khan", "Yash Pandey", "Shreya Das",
+  "Aryan Mishra", "Isha Bansal", "Kabir Menon", "Nisha Pillai", "Dev Thakur", "Sanya Arora",
+  "Harsh Agarwal", "Simran Kaur", "Manav Saxena", "Anjali Rathore", "Rohit Chauhan", "Kriti Bose",
+  "Pranav Hegde", "Divya Mukherjee", "Akash Yadav", "Swati Ghosh", "Omkar Patil", "Lavanya Krishnan",
+  "Tushar Bhosale", "Fatima Sheikh", "Gaurav Tiwari", "Ritika Sinha", "Sahil Dubey", "Zoya Ansari",
+  "Abhishek Naidu", "Bhavna Chawla", "Kunal Shetty", "Mansi Dixit", "Parth Vora", "Shruti Gokhale",
+  "Tejas Kamat", "Urvi Doshi", "Vivek Jha", "Yamini Rawat", "Hrithik Bajaj", "Ira Sethi",
 ];
+
+// Students not enrolled in each course (a different group per course)
+const SITTING_OUT_PER_COURSE = 8;
+
+// Reason weights per reaction: the top three stand out on the DEBE Reasons panel, and every lesson
+// perturbs them a little so lessons don't all look the same.
+const REASON_WEIGHTS = {
+  difficult: { "ne-exp": 5, "too-fast": 4, "lang-barrier": 3, "ne-bg": 2, "unclear-pres": 2, "co-difficult": 1.5 },
+  easy: { "good-exp": 5, "easy-co": 3, "ak-co": 2.5, "teacher-easy": 2 },
+  boring: { "too-slow-repetitive": 4, "too-easy": 3, "co-not-meaningful": 2, "pres-style": 1.5, "co-boring": 1.5, "too-difficult": 1 },
+  engaging: { "interesting-egs": 5, "good-exp": 4, "interesting-topic": 3, "intellectually-chlg": 2, "pres-style": 1.5, "ak-co": 1 },
+};
+
+// Free-text "Other" reasons (shown under Other Reasons)
+const OTHER_REASONS = {
+  difficult: [
+    "Lost track when the notation changed",
+    "Could you slow down this derivation?",
+    "Need a numerical example here",
+    "The diagram was too busy to follow",
+    "Didn't get why this step follows from the previous one",
+    "Too many new terms at once",
+    "Subtitles cover the equations",
+  ],
+  easy: [
+    "Already covered in our previous lecture",
+    "The animation made it obvious",
+    "Simple once you see the picture",
+    "We did this in class 12",
+    "Clear and to the point",
+  ],
+  boring: [
+    "This part repeats the previous video",
+    "Too long on one example",
+    "I know this already, could skip",
+    "Pace is slow here",
+    "Wish this had a real-world example",
+  ],
+  engaging: [
+    "Love the visual intuition!",
+    "The real-world application here is great",
+    "Never thought of it this way",
+    "Great analogy",
+    "Makes me want to try coding it",
+    "The animation is beautiful",
+  ],
+};
 
 // Quiz option helper: [text, isCorrect]
 const TF = (answer) => [["True", answer], ["False", !answer]];
 
 // `first` = target first-try success rate, `retry` = share of wrong first answers retried correctly,
 // `reach` (optional) = share of viewers shown the question (demonstrates "Too few answers").
-// Ranges are in seconds. Bookmark from/to are seconds too (stored as minutes, like the dashboard).
+// Ranges are in seconds (several per kind give several hot spots on the charts and clickstream).
+// Bookmark from/to are seconds too (stored as minutes, like the dashboard).
 const DEMO_COURSES = [
   {
     name: "Machine Learning Foundations",
@@ -65,38 +119,56 @@ const DEMO_COURSES = [
         desc: "Neurons, layers and weights explained visually.",
         youtube_link: "https://www.youtube.com/watch?v=aircAruvnKk",
         seconds: 1153,
-        difficult: [[480, 640]], boring: [[880, 980]], engaging: [[60, 240], [1000, 1120]],
+        difficult: [[300, 400], [480, 640], [760, 840]], boring: [[880, 980]], engaging: [[60, 240], [1000, 1120]],
         quiz: [
           { t: 200, first: 0.92, retry: 0.5, q: "What does a single neuron hold in this model?", type: "mcq", options: [["A number between 0 and 1", true], ["An image", false], ["A program", false], ["A list of weights only", false]] },
+          { t: 380, first: 0.48, retry: 0.6, q: "How many neurons are in the input layer for a 28×28 image?", type: "mcq", options: [["784", true], ["28", false], ["56", false], ["10", false]] },
           { t: 560, first: 0.3, retry: 0.7, q: "What does the bias of a neuron control?", type: "mcq", options: [["How high the weighted sum must be before it activates", true], ["The number of layers", false], ["The learning rate", false], ["The size of the input image", false]] },
           { t: 700, first: 0.75, retry: 0.6, q: "Weights and biases are what the network learns.", type: "true_false", options: TF(true) },
+          { t: 820, first: 0.62, retry: 0.6, q: "The sigmoid function squishes any input into…", type: "mcq", options: [["The range 0 to 1", true], ["The range -1 to 1", false], ["Whole numbers", false]] },
           { t: 1050, first: 0.55, retry: 0.6, q: "Which of these are hidden-layer ideas from the video?", type: "msq", options: [["Detecting edges", true], ["Detecting loops and lines", true], ["Storing the final label", false]] },
         ],
-        bookmark: { from: 480, to: 640, type: ["difficult"], topic: "Weights, biases and the sigmoid", question: "Why did difficulty spike around minutes 8-10?", action: "Add a worked example of a weighted sum before introducing sigmoid" },
+        bookmarks: [
+          { from: 300, to: 400, type: ["difficult"], topic: "Input layer and activations", questions: [["Why did students find the 784 inputs confusing?", "Show the image being flattened into a column of pixels"]] },
+          { from: 480, to: 640, type: ["difficult"], topic: "Weights, biases and the sigmoid", questions: [["Why did difficulty spike around minutes 8-10?", "Add a worked example of a weighted sum before introducing sigmoid"], ["Did the quiz on bias confirm the confusion?", "Reteach bias as a threshold with a number line"]] },
+          { from: 880, to: 980, type: ["boring"], topic: "Matrix notation recap", questions: [["Why did engagement drop here?", "Shorten the recap and link to the linear algebra lesson"]] },
+        ],
       },
       {
         name: "Gradient Descent",
         desc: "How neural networks learn by minimising a cost function.",
         youtube_link: "https://www.youtube.com/watch?v=IHZwWFHWa-w",
         seconds: 1261,
-        difficult: [[840, 960]], boring: [[1100, 1200]], engaging: [[120, 280]],
+        difficult: [[420, 540], [840, 960]], boring: [[600, 680], [1100, 1200]], engaging: [[120, 280], [700, 800]],
         quiz: [
           { t: 240, first: 0.85, retry: 0.5, q: "The cost function measures…", type: "mcq", options: [["How wrong the network's outputs are", true], ["How long training takes", false], ["How many neurons there are", false]] },
+          { t: 480, first: 0.42, retry: 0.6, q: "What does the negative gradient of the cost tell you?", type: "msq", options: [["Which direction decreases the cost fastest", true], ["Which weights matter most", true], ["The final accuracy", false]] },
+          { t: 650, first: 0.72, retry: 0.5, q: "A local minimum is always the global minimum.", type: "true_false", options: TF(false) },
           { t: 900, first: 0.35, retry: 0.65, q: "Gradient descent moves parameters in which direction?", type: "mcq", options: [["Opposite to the gradient", true], ["Along the gradient", false], ["Randomly", false], ["Perpendicular to the gradient", false]] },
           { t: 1000, first: 0.6, retry: 0.5, q: "Which of these are hyperparameters?", type: "msq", options: [["Learning rate", true], ["Number of layers", true], ["Individual weights", false]] },
+          { t: 1150, first: 0.78, retry: 0.5, reach: 0.1, q: "Training accuracy on random labels can still be high.", type: "true_false", options: TF(true) },
         ],
-        bookmark: { from: 840, to: 960, type: ["difficult", "boring"], topic: "Cost function landscape", question: "Students lost track during the multi-dimensional cost discussion", action: "Use a 2D contour plot before generalising to many dimensions" },
+        bookmarks: [
+          { from: 420, to: 540, type: ["difficult"], topic: "Gradient as a direction", questions: [["Why is the negative gradient hard to picture?", "Use a ball rolling down a 2D bowl before the general case"]] },
+          { from: 840, to: 960, type: ["difficult", "boring"], topic: "Cost function landscape", questions: [["Students lost track during the multi-dimensional cost discussion", "Use a 2D contour plot before generalising to many dimensions"]] },
+        ],
       },
       {
         name: "Backpropagation Intuition",
         desc: "What backpropagation is really doing.",
         youtube_link: "https://www.youtube.com/watch?v=Ilg3gGewQ5U",
         seconds: 834,
-        difficult: [[360, 520]], boring: [[620, 700]], engaging: [[40, 180]],
+        difficult: [[220, 300], [360, 520]], boring: [[620, 700]], engaging: [[40, 180], [720, 800]],
         quiz: [
           { t: 150, first: 0.88, retry: 0.5, q: "Backpropagation is used to compute…", type: "mcq", options: [["The gradient of the cost", true], ["The network's output", false], ["The training data", false]] },
-          { t: 450, first: 0.45, retry: 0.6, q: "Backpropagation computes the gradient with respect to every weight.", type: "true_false", options: TF(true) },
-          { t: 790, first: 0.7, retry: 0.5, reach: 0.2, q: "Stochastic gradient descent uses…", type: "mcq", options: [["Small random mini-batches", true], ["The full dataset every step", false], ["No data at all", false]] },
+          { t: 260, first: 0.52, retry: 0.6, q: "To raise one output's activation you can change…", type: "msq", options: [["Its bias", true], ["The weights into it", true], ["The previous layer's activations", true], ["The training labels", false]] },
+          { t: 450, first: 0.38, retry: 0.6, q: "Backpropagation computes the gradient with respect to every weight.", type: "true_false", options: TF(true) },
+          { t: 560, first: 0.81, retry: 0.5, q: "Neurons that fire together, wire together is an analogy for…", type: "mcq", options: [["How weights between active neurons grow", true], ["How biases are initialised", false], ["How images are loaded", false]] },
+          { t: 790, first: 0.7, retry: 0.5, reach: 0.1, q: "Stochastic gradient descent uses…", type: "mcq", options: [["Small random mini-batches", true], ["The full dataset every step", false], ["No data at all", false]] },
+        ],
+        bookmarks: [
+          { from: 360, to: 520, type: ["difficult"], topic: "Propagating desired changes backwards", questions: [["Which part of the backward pass lost students?", "Animate one training example's nudges layer by layer"]] },
+          { from: 620, to: 700, type: ["boring"], topic: "Mini-batch bookkeeping", questions: [["Why did students skip ahead here?", "Cut the bookkeeping and summarise it in one slide"]] },
         ],
       },
     ],
@@ -109,11 +181,19 @@ const DEMO_COURSES = [
         desc: "What vectors are, from physics, CS and maths perspectives.",
         youtube_link: "https://www.youtube.com/watch?v=fNk_zzaMoSs",
         seconds: 592,
-        difficult: [[400, 480]], boring: [[200, 280]], engaging: [[40, 140], [500, 560]],
+        difficult: [[240, 300], [400, 480]], boring: [[160, 220]], engaging: [[40, 140], [500, 570]],
         quiz: [
           { t: 150, first: 0.9, retry: 0.5, q: "To a computer scientist, a vector is…", type: "mcq", options: [["An ordered list of numbers", true], ["An arrow with no coordinates", false], ["A single number", false]] },
-          { t: 300, first: 0.78, retry: 0.6, q: "Adding two vectors geometrically means…", type: "mcq", options: [["Placing them tip to tail", true], ["Multiplying their lengths", false], ["Averaging their angles", false]] },
+          { t: 270, first: 0.46, retry: 0.6, q: "The vector [3, -2] means…", type: "mcq", options: [["3 right, 2 down from the origin", true], ["3 up, 2 left", false], ["A point 5 units away", false]] },
+          { t: 330, first: 0.78, retry: 0.6, q: "Adding two vectors geometrically means…", type: "mcq", options: [["Placing them tip to tail", true], ["Multiplying their lengths", false], ["Averaging their angles", false]] },
           { t: 450, first: 0.38, retry: 0.7, q: "Multiplying a vector by -2 flips it and doubles its length.", type: "true_false", options: TF(true) },
+          { t: 520, first: 0.84, retry: 0.5, q: "Vector addition is commutative (v + w = w + v).", type: "true_false", options: TF(true) },
+          { t: 575, first: 0.6, retry: 0.5, reach: 0.1, q: "Which operations are fundamental to linear algebra?", type: "msq", options: [["Vector addition", true], ["Scalar multiplication", true], ["Division of vectors", false]] },
+        ],
+        bookmarks: [
+          { from: 240, to: 300, type: ["difficult"], topic: "Coordinates of a vector", questions: [["Why were signs of coordinates confusing?", "Draw [3, -2] step by step on the grid"]] },
+          { from: 400, to: 480, type: ["difficult"], topic: "Scaling by negative numbers", questions: [["Why did the -2 scaling question go badly?", "Show -1 as a flip before combining it with stretching"], ["Did students replay this part?", "Add a pause-and-try exercise before the answer"]] },
+          { from: 160, to: 220, type: ["boring"], topic: "Three perspectives recap", questions: [["Why did students skip the perspectives?", "Trim the physics perspective to a single example"]] },
         ],
       },
       {
@@ -121,24 +201,37 @@ const DEMO_COURSES = [
         desc: "Scaling and adding vectors, and the space they reach.",
         youtube_link: "https://www.youtube.com/watch?v=k7RM-ot2NWY",
         seconds: 599,
-        difficult: [[260, 400]], boring: [[480, 540]], engaging: [[60, 200]],
+        difficult: [[260, 400], [440, 500]], boring: [[520, 570]], engaging: [[60, 200]],
         quiz: [
+          { t: 120, first: 0.9, retry: 0.5, q: "A linear combination of v and w is…", type: "mcq", options: [["av + bw for scalars a and b", true], ["v × w", false], ["v divided by w", false]] },
           { t: 180, first: 0.82, retry: 0.5, q: "î and ĵ are called the…", type: "mcq", options: [["Basis vectors", true], ["Eigenvectors", false], ["Null vectors", false]] },
           { t: 330, first: 0.28, retry: 0.75, q: "Which sets of 2D vectors span the whole plane?", type: "msq", options: [["Two non-parallel vectors", true], ["Two vectors on the same line", false], ["The zero vector alone", false]] },
           { t: 450, first: 0.62, retry: 0.6, q: "Linearly dependent vectors add a new dimension to the span.", type: "true_false", options: TF(false) },
+          { t: 490, first: 0.74, retry: 0.5, q: "A basis of a space is a set of vectors that…", type: "msq", options: [["Are linearly independent", true], ["Span the space", true], ["Are all unit length", false]] },
         ],
-        bookmark: { from: 260, to: 400, type: ["difficult"], topic: "Span and linear dependence", question: "Why is linear dependence confusing?", action: "Show an interactive example of a redundant vector" },
+        bookmarks: [
+          { from: 260, to: 400, type: ["difficult"], topic: "Span and linear dependence", questions: [["Why is linear dependence confusing?", "Show an interactive example of a redundant vector"]] },
+          { from: 440, to: 500, type: ["difficult", "engaging"], topic: "Definition of a basis", questions: [["Students were engaged but still found it difficult - why?", "Pair the formal definition with the î, ĵ picture"]] },
+        ],
       },
       {
         name: "Linear Transformations and Matrices",
         desc: "Matrices as transformations of space.",
         youtube_link: "https://www.youtube.com/watch?v=kYB8IZa5AuE",
         seconds: 658,
-        difficult: [[330, 470]], boring: [[560, 620]], engaging: [[90, 300]],
+        difficult: [[230, 290], [330, 470]], boring: [[560, 620]], engaging: [[90, 220], [480, 540]],
         quiz: [
           { t: 200, first: 0.86, retry: 0.5, q: "A linear transformation keeps grid lines…", type: "mcq", options: [["Parallel and evenly spaced", true], ["Curved", false], ["Randomly spaced", false]] },
+          { t: 280, first: 0.5, retry: 0.6, q: "If î lands on (1, -2) and ĵ on (3, 0), where does (-1, 2) land?", type: "mcq", options: [["(5, 2)", true], ["(2, -2)", false], ["(-1, 4)", false], ["(3, 2)", false]] },
           { t: 400, first: 0.33, retry: 0.7, q: "The columns of a 2×2 matrix tell you…", type: "mcq", options: [["Where î and ĵ land", true], ["The determinant", false], ["The eigenvalues", false]] },
+          { t: 500, first: 0.79, retry: 0.5, q: "Matrix-vector multiplication applies the transformation to the vector.", type: "true_false", options: TF(true) },
           { t: 600, first: 0.72, retry: 0.5, q: "The origin stays fixed under a linear transformation.", type: "true_false", options: TF(true) },
+          { t: 640, first: 0.65, retry: 0.5, reach: 0.1, q: "A shear transformation keeps…", type: "mcq", options: [["î fixed while ĵ tilts", true], ["Every vector fixed", false], ["Only the origin moving", false]] },
+        ],
+        bookmarks: [
+          { from: 230, to: 290, type: ["difficult"], topic: "Tracking where î and ĵ land", questions: [["Why did the worked example lose students?", "Slow down and colour-code î and ĵ through the computation"]] },
+          { from: 330, to: 470, type: ["difficult"], topic: "Matrix columns as transformed basis", questions: [["Why did only a third get the columns question right?", "Reteach with a matrix written next to the transformed grid"], ["Did replays help?", "Check the next lesson's quiz for improvement"]] },
+          { from: 560, to: 620, type: ["boring"], topic: "Closing summary", questions: [["Why did students drop off at the end?", "Move the summary into a short recap card"]] },
         ],
       },
     ],
@@ -301,6 +394,29 @@ const removePreviousDemo = async (teacher) => {
 };
 
 // ---------------------------------------------------------------------------------------------
+/** Per-lesson reason weights: REASON_WEIGHTS with a little noise, so lessons rank reasons differently. */
+const lessonReasonWeights = () =>
+  Object.fromEntries(
+    Object.entries(REASON_WEIGHTS).map(([kind, weights]) => [
+      kind,
+      Object.entries(weights).filter(([key]) => DETAIL_TYPES[kind].includes(key)).map(([key, w]) => [key, w * (0.6 + rand() * 0.8)]),
+    ])
+  );
+
+const weightedPick = (entries) => {
+  let r = rand() * entries.reduce((sum, [, w]) => sum + w, 0);
+  for (const [key, w] of entries) if ((r -= w) < 0) return key;
+  return entries[entries.length - 1][0];
+};
+
+/** A feedback click's details: mostly a listed reason, sometimes free text ("Other") or none. */
+const detailsFor = (kind, reasonWeights) => {
+  const r = rand();
+  if (r < 0.7) return { [kind]: weightedPick(reasonWeights[kind]) };
+  if (r < 0.82) return { other: pick(OTHER_REASONS[kind]) };
+  return { none: true };
+};
+
 /**
  * Simulates every viewer watching one lesson and returns { feedback, logs, reached }.
  * `quizTimes` are the question timestamps (the player pauses there for the pop-up).
@@ -310,8 +426,11 @@ const simulateViewing = ({ lesson, profile, viewers, quizTimes, windowStart, win
   const feedback = [];
   const logs = [];
   const reached = new Map();
+  const reasonWeights = lessonReasonWeights();
   const [boringFrom, boringTo] = profile.boring[0] || [seconds, seconds];
   const span = Math.max(1, windowEnd - windowStart - (seconds + 3600) * 1000);
+  // Students land in the same minute so the per-minute counts cluster into a visible moment
+  const minuteOf = (s) => Math.floor(s / 60) * 60;
 
   for (const student of viewers) {
     const sid = student._id;
@@ -327,25 +446,32 @@ const simulateViewing = ({ lesson, profile, viewers, quizTimes, windowStart, win
       pos = to;
     };
 
-    // Where this student stops: ~65% finish; of the rest, half give up in the boring stretch
+    // Where this student stops: ~68% finish; some give up in the boring stretch, the rest anywhere
     let stopAt = seconds;
     const r = rand();
-    if (r < 0.18) stopAt = randInt(boringFrom, Math.max(boringFrom, boringTo));
-    else if (r < 0.35) stopAt = randInt(Math.floor(seconds * 0.15), Math.floor(seconds * 0.9));
+    if (r < 0.14) stopAt = randInt(boringFrom, Math.max(boringFrom, boringTo));
+    else if (r < 0.32) stopAt = randInt(Math.floor(seconds * 0.1), Math.floor(seconds * 0.95));
     stopAt = clamp(stopAt, 30, seconds);
 
-    const replays = rand() < 0.75; // goes back over the hard part
-    const skips = rand() < 0.6; // skips the boring part
-    const thinker = rand() < 0.35; // pauses to take notes in the hard part
-    let replayed = false;
-    let skipped = false;
+    const lurker = rand() < 0.08; // watches but never reacts
+    const thinker = rand() < 0.4; // pauses to take notes in hard parts
+    // Each hard part is replayed 0, 1 or 2 times; each boring part is skipped or not
+    const replays = profile.difficult.map((range) => ({ range, left: rand() < 0.65 ? (rand() < 0.25 ? 2 : 1) : 0 }));
+    const skips = profile.boring.map((range) => ({ range, skip: rand() < 0.5 }));
 
     log("lesson_joined", 0, 0);
     log("play", 0, randInt(2, 15));
 
+    // Some students skip the intro
+    if (rand() < 0.2) {
+      const land = randInt(25, 55);
+      log("forward_seek", land, randInt(3, 10));
+      pos = land;
+    }
+
     // Walk through the video in feedback-sized steps
-    let next = randInt(35, 70);
-    const events = [...quizTimes.map((t) => ({ t, kind: "quiz" }))];
+    let next = pos + randInt(15, 40);
+    const events = quizTimes.map((t) => ({ t }));
     while (pos < stopAt) {
       const stepTo = Math.min(next, stopAt);
       // Quiz pop-ups crossed in this step pause the video
@@ -359,22 +485,21 @@ const simulateViewing = ({ lesson, profile, viewers, quizTimes, windowStart, win
       advanceTo(stepTo);
       if (pos >= stopAt) break;
 
-      // Students land in the same minute so the per-minute counts cluster into a visible moment
-      const minuteOf = (s) => Math.floor(s / 60) * 60;
-
-      // Skip ahead over the boring part (a step can cross it entirely): logged where the student lands
-      if (skips && !skipped && prevPos < boringTo && pos >= boringFrom) {
-        skipped = true;
-        const land = clamp(Math.max(minuteOf(boringTo), boringFrom) + randInt(0, 40), pos + 5, seconds - 1);
+      // Skip ahead over a boring part (a step can cross it entirely): logged where the student lands
+      const boring = skips.find((s) => s.skip && !s.done && prevPos < s.range[1] && pos >= s.range[0]);
+      if (boring) {
+        boring.done = true;
+        const [a, b] = boring.range;
+        const land = clamp(Math.max(minuteOf(b), a) + randInt(0, 40), pos + 5, seconds - 1);
         if (land >= stopAt) stopAt = Math.min(seconds, land + 60);
         log("forward_seek", land, 1);
         pos = land;
-        next = pos + randInt(25, 60);
+        next = pos + randInt(15, 40);
         continue;
       }
 
       // Feedback click (skipping the first/last 30s, which the dashboard ignores)
-      if (pos >= 35 && pos <= seconds - 35) {
+      if (!lurker && pos >= 35 && pos <= seconds - 35) {
         const kind = reactionAt(profile, pos);
         const at = new Date(wall);
         feedback.push({
@@ -383,7 +508,7 @@ const simulateViewing = ({ lesson, profile, viewers, quizTimes, windowStart, win
           difficult: kind === "difficult",
           engaging: kind === "engaging",
           boring: kind === "boring",
-          details: rand() < 0.75 ? { [kind]: pick(DETAIL_TYPES[kind]) } : { none: true },
+          details: detailsFor(kind, reasonWeights),
           student_id: sid,
           session_id,
           lesson: lesson._id,
@@ -393,27 +518,39 @@ const simulateViewing = ({ lesson, profile, viewers, quizTimes, windowStart, win
         });
       }
 
-      const hard = profile.difficult.find(([a, b]) => pos >= a && pos <= b);
-      if (hard && thinker && rand() < 0.5) {
+      const hard = inRanges(pos, profile.difficult);
+      if ((hard && thinker && rand() < 0.5) || (inRanges(pos, profile.engaging) && rand() < 0.06) || rand() < 0.03) {
         log("pause", pos, 0);
-        log("play", pos, randInt(20, 90));
+        log("play", pos, randInt(hard ? 20 : 10, hard ? 90 : 60));
       }
-      // Jump back to the start of the hard part once the student reaches its second half
-      const crossed = profile.difficult.find(([a, b]) => prevPos <= b && pos >= a + (b - a) * 0.5);
-      if (crossed && replays && !replayed) {
-        replayed = true;
-        const land = clamp(Math.max(minuteOf(crossed[0]), crossed[0] - 30) + randInt(0, 30), 0, pos - 6);
+      // Background noise: the odd short rewind or skip anywhere in the video
+      if (rand() < 0.03 && pos > 40) {
+        const land = pos - randInt(10, 40);
+        log("backward_seek", land, randInt(1, 4));
+        pos = land;
+        next = pos + randInt(15, 40);
+        continue;
+      }
+      if (rand() < 0.02 && pos + 40 < stopAt) {
+        const land = pos + randInt(10, 30);
+        log("forward_seek", land, randInt(1, 4));
+        pos = land;
+        next = pos + randInt(15, 40);
+        continue;
+      }
+      // Jump back to the start of a hard part once the student reaches its second half
+      const replay = replays.find(({ range: [a, b], left }) => left > 0 && prevPos <= b && pos >= a + (b - a) * 0.5);
+      if (replay) {
+        replay.left -= 1;
+        const [a] = replay.range;
+        const land = clamp(Math.max(minuteOf(a), a - 30) + randInt(0, 30), 0, pos - 6);
         log("pause", pos, 0);
         log("backward_seek", land, randInt(2, 8));
         pos = land;
-        next = pos + randInt(25, 60);
+        next = pos + randInt(15, 40);
         continue;
       }
-      if (rand() < 0.04) {
-        log("pause", pos, 0);
-        log("play", pos, randInt(10, 120));
-      }
-      next = pos + randInt(25, 70);
+      next = pos + randInt(15, 40);
     }
 
     if (stopAt < seconds) log("pause", stopAt, 0);
@@ -495,8 +632,7 @@ const seed = async () => {
         minutes: Math.ceil(ldef.seconds / 60),
         createdAt: new Date(now - (21 - ci * 3 - li * 3) * DAY),
       });
-      if (ldef.bookmark) {
-        const b = ldef.bookmark;
+      for (const b of ldef.bookmarks || []) {
         const bookmark = await Bookmark.create({
           // Bookmarks store the dashboard range, which is in MINUTES
           time_from: Math.floor(b.from / 60),
@@ -505,11 +641,11 @@ const seed = async () => {
           topic: b.topic,
           threshold: 50,
           linechart_feedback: ["net_difficult", "net_engaging"],
-          questions: [{ name: b.question, action: b.action }],
-          actions: [{ question: 0, action: b.action, future_action: "Review the effect in the next lecture's feedback" }],
+          questions: b.questions.map(([name, action]) => ({ name, action })),
+          actions: b.questions.map(([, action], question) => ({ question, action, future_action: "Review the effect in the next lecture's feedback" })),
         });
-        lesson.bookmarks = [bookmark._id];
-        lesson.current_bookmark = bookmark._id;
+        lesson.bookmarks.push(bookmark._id);
+        if (!lesson.current_bookmark) lesson.current_bookmark = bookmark._id;
       }
       await lesson.save();
       course.lessons.push(lesson._id);
@@ -523,8 +659,8 @@ const seed = async () => {
 
   for (const [ci, course] of allCourses.entries()) {
     const isDemo = DEMO_COURSES.some((c) => c.name === course.name);
-    // ~20 of the 24 demo students per course, a different few sit out each course
-    const enrolled = students.filter((_, i) => (i + ci * 5) % 24 >= 4);
+    // Most demo students per course, a different few sit out each course
+    const enrolled = students.filter((_, i) => (i + ci * 7) % students.length >= SITTING_OUT_PER_COURSE);
     await Course.updateOne({ _id: course._id }, { $addToSet: { students: { $each: enrolled.map((s) => s._id) } } });
 
     const lessons = await Lesson.find({ _id: { $in: course.lessons } }).sort({ createdAt: 1 });

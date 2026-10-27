@@ -57,6 +57,24 @@ describe("clickstream logging", () => {
     expect(res.body.by_minute.length).toBe(Math.ceil(FAKE_SECONDS / 60) + 1);
   });
 
+  test("pauses caused by quiz pop-ups are left out of the student-level pause counts", async () => {
+    const { teacher, lesson, student } = await setup();
+    expect((await createQuestion(teacher, lesson._id, mcq({ timestamp: 30 }))).status).toBe(201);
+    const log = (duration) =>
+      request(app).post(`/api/lessons/${lesson._id}/log`).set("Authorization", student.auth).send({ action: "pause", duration });
+    await log(31); // the player pausing for the quiz pop-up
+    await log(150); // the student pausing on their own
+
+    const res = await request(app).get(`/api/lessons/${lesson._id}/clickstream`).set("Authorization", teacher.auth);
+    expect(res.status).toBe(200);
+    expect(res.body.quiz_times).toEqual([30]);
+    expect(res.body.students_by_minute[0].pause).toBe(0);
+    expect(res.body.students_by_minute[2].pause).toBe(1);
+    expect(res.body.students.paused).toBe(1);
+    // Raw per-minute event counts still include every pause
+    expect(res.body.by_minute[0].pause).toBe(1);
+  });
+
   test("lessons without a known length are capped at 24 hours of timeline", async () => {
     const { teacher, lesson, student } = await setup();
     await Lesson().updateOne({ _id: lesson._id }, { $unset: { seconds: 1, minutes: 1 } });

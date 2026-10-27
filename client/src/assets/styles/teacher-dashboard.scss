@@ -574,7 +574,8 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: 0 calc(1vh + calc(2 * var(--tc-vw)));
+      // Top padding keeps the donut below the caption and the "Students / Clicks" switch
+      padding: calc(2vh + calc(2 * var(--tc-vw))) calc(1vh + calc(2 * var(--tc-vw))) 0;
       svg {
         height: 100%;
       }

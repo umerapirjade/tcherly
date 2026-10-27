@@ -5,6 +5,8 @@
     display: flex;
     justify-content: center;
     position: relative;
+    // Room for the caption under the circles
+    padding-bottom: 1.6em;
 
     svg {
       // Fit both dimensions (viewBox keeps the aspect ratio), so wide-but-short boxes don't overflow
@@ -34,5 +36,36 @@
     font-size: calc(0.55vh + calc(0.55 * var(--tc-vw)));
     width: 100%;
     text-align: center;
+  }
+}
+
+// Two-circle DEBE Interactions diagram (components/Analysis/NewCharts/Venn.jsx)
+.debe-venn-region {
+  stroke: #fff;
+  stroke-width: 1;
+  cursor: default;
+  transition: stroke-width 150ms;
+  &:hover { stroke: #3b0764; stroke-width: 1.5; }
+}
+.debe-venn-num text {
+  font-size: 13px;
+  font-weight: 600;
+  fill: #212529;
+  pointer-events: none;
+}
+
+// DEBE Distribution donut (components/Analysis/NewCharts/Radial.jsx)
+.debe-donut-seg { transition: stroke-width 150ms; &:hover { stroke-width: 28; } }
+.debe-donut-total { font-size: 30px; font-weight: 700; fill: #212529; }
+.debe-donut-sub { font-size: 9.5px; fill: #495057; }
+.debe-donut-name { font-size: 13px; font-weight: 600; fill: #212529; }
+.debe-donut-value { font-size: 12px; fill: #495057; }
+// "Students / Clicks" switch in the top-right corner (like "View 1 / View 2")
+.td-radial .td-radial-heatmap {
+  .nd-radial-slider {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: calc(0.5vh + calc(0.5 * var(--tc-vw)));
   }
 }

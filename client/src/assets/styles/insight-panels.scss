@@ -251,55 +251,44 @@
     &-tick { position: absolute; left: 80%; top: -3px; bottom: -3px; width: 1.5px; background: var(--violet-12); opacity: 0.6; }
   }
 
-  // ── Viewing lanes: one column per minute, all on the same axis; the chart takes the leftover height ──
-  .tc-lanes {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: 82px minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(56px, 1fr);
-    column-gap: 8px;
-    row-gap: 3px;
-    padding: 0 12px;
-  }
-  .tc-lane-label {
-    font-size: 0.6875em;
-    font-weight: 500;
-    color: var(--gray-11);
+  // ── Clickstream: plain-language takeaways, then one chart ─────────────────
+  .tc-insights {
+    list-style: none;
+    margin: 0;
+    padding: 0 12px 4px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    line-height: 1.25;
-    white-space: nowrap;
+    gap: 3px;
+    flex-shrink: 0;
+    &-none { font-size: 0.75em; color: var(--gray-10); padding: 2px 0; }
+  }
+  .tc-insight {
+    width: 100%;
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--violet-4); background: #fff;
+    border-radius: 6px; padding: 3px 8px;
+    font-size: 0.75em; color: var(--gray-11); text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms, background 150ms;
+    b { color: var(--gray-12); font-weight: 600; }
+    &-icon { width: 14px; text-align: center; font-size: 0.85em; }
+    &-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    &-hint { color: var(--gray-10); }
+    &-watch { flex-shrink: 0; color: var(--violet-11); font-weight: 500; i { font-size: 0.75em; margin-right: 2px; } }
+    &.is-back .tc-insight-icon { color: var(--violet-9); }
+    &.is-skip .tc-insight-icon { color: var(--gray-9); }
+    &.is-pause .tc-insight-icon { color: var(--violet-12); }
+    &:hover, &.is-sel { border-color: var(--violet-6); background: var(--violet-2); }
+  }
+  .tc-legend {
+    display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px;
+    padding: 2px 12px 0;
+    font-size: 0.6875em; color: var(--gray-11);
+    flex-shrink: 0;
     .sw { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 5px; }
-    &.is-split { justify-content: space-between; padding: 4px 0 22px; }
+    &-q { color: var(--gray-9); font-weight: 600; margin-right: 4px; }
   }
-  .tc-strip {
-    display: grid;
-    padding-right: 30px;
-    &-cell {
-      border: 0; padding: 0; margin: 0;
-      background: transparent;
-      cursor: pointer;
-      display: flex; align-items: flex-end; justify-content: center;
-      transition: background 150ms;
-      &:hover { background: rgba(147, 51, 234, 0.08); }
-      &.is-sel { background: rgba(233, 213, 255, 0.7); }
-    }
-    &.is-reach {
-      height: 22px;
-      border-bottom: 1px solid var(--gray-5);
-      .tc-strip-cell span { width: 100%; background: var(--violet-4); border-top: 1.5px solid var(--violet-9); }
-      .tc-strip-cell.is-sel span { background: var(--violet-5); }
-      border-bottom-color: var(--violet-4);
-    }
-    &.is-pause {
-      height: 16px;
-      .tc-strip-cell { align-items: center; }
-      .tc-strip-cell span { border-radius: 50%; background: var(--violet-12); opacity: 0.8; box-shadow: 0 0 0 1px #f6f5fb; }
-    }
-  }
-  .tc-chart { min-height: 0; min-width: 0; cursor: pointer; }
+  .tc-chart { flex: 1; min-height: 90px; min-width: 0; padding: 0 12px 6px; cursor: pointer; }
   .tc-tip {
     background: #fff;
     border: 1px solid var(--violet-4);
@@ -313,30 +302,6 @@
     &-hint { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--gray-4); color: var(--violet-11); font-size: 0.6875em; }
   }
 
-  // ── Moments to review: one line of chips ──────────────────────────────────
-  .tc-chips {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 12px 8px;
-    flex-shrink: 0;
-    overflow: hidden;
-    &-label { font-size: 0.6875em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gray-10); margin-right: 2px; }
-    &-none { font-size: 0.75em; color: var(--gray-10); }
-  }
-  .tc-chip {
-    display: inline-flex; align-items: center; gap: 5px;
-    border: 1px solid var(--violet-4); background: #fff;
-    border-radius: 999px; padding: 1px 8px;
-    font-size: 0.72em; color: var(--gray-11); white-space: nowrap;
-    transition: border-color 150ms, background 150ms;
-    i { font-size: 0.6em; }
-    b { color: var(--gray-12); font-weight: 600; }
-    &.is-back i { color: var(--violet-9); }
-    &.is-skip i { color: var(--gray-9); }
-    &.is-pause i { color: var(--violet-12); }
-    &:hover, &.is-sel { border-color: var(--violet-6); background: var(--violet-2); }
-  }
 }
 
 @keyframes tc-spin { to { transform: rotate(360deg); } }

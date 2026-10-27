@@ -1,12 +1,22 @@
 const Student = require("../database/models/student");
 const Lesson = require("../database/models/lesson");
 const Log = require("../database/models/log");
+const QuizQuestion = require("../database/models/quiz-question");
 const { isValidObjectId } = require("../handlers/misc");
 const { onLogFail } = require("../utils/log");
 
 const CLICKSTREAM_ACTIONS = ["play", "pause", "forward_seek", "backward_seek"];
 // Upper bound for the clickstream timeline when the lesson length is unknown (24 hours of video).
 const MAX_TIMELINE_MINUTES = 24 * 60;
+// The player pauses for a quiz pop-up within 2s of the question's timestamp; pauses this close to a
+// question are the pop-up, not the student, so they are left out of the student-level pause counts.
+const QUIZ_PAUSE_WINDOW_SECONDS = 3;
+
+/** Log filter that drops pauses caused by quiz pop-ups (empty when the lesson has no questions). */
+const excludeQuizPauses = (quizTimes) =>
+  quizTimes.length
+    ? { $nor: quizTimes.map((t) => ({ action: "pause", duration: { $gte: t - QUIZ_PAUSE_WINDOW_SECONDS, $lte: t + QUIZ_PAUSE_WINDOW_SECONDS } })) }
+    : {};
 
 const lessonLengthSeconds = (lesson) => lesson.seconds || (lesson.minutes || 0) * 60;
 
@@ -119,10 +129,16 @@ const getClickstream = async (req, res) => {
         .slice(0, 3)
         .map((r) => ({ minute: r.minute, count: r[action] }));
 
+    const quizTimes = (await QuizQuestion.find({ lesson: lesson._id }).select("timestamp").lean())
+      .map((q) => q.timestamp)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    const notQuizPause = excludeQuizPauses(quizTimes);
+
     // Student-level view (distinct students, not raw events): raw play/pause counts mostly measure how
     // often people resume, so the dashboard shows "how many students jumped back / skipped / paused here".
     const studentMinuteRaw = await Log.aggregate([
-      { $match: { lesson: lesson._id, action: { $in: ["pause", "forward_seek", "backward_seek"] } } },
+      { $match: { lesson: lesson._id, action: { $in: ["pause", "forward_seek", "backward_seek"] }, ...notQuizPause } },
       {
         $group: {
           _id: { action: "$action", minute: { $floor: { $divide: [{ $ifNull: ["$duration", 0] }, 60] } }, student: "$student" },
@@ -135,7 +151,7 @@ const getClickstream = async (req, res) => {
       { $match: { lesson: lesson._id, student: { $ne: null } } },
       { $group: { _id: "$student", max: { $max: { $ifNull: ["$duration", 0] } } } },
     ]);
-    const distinctFor = (action) => Log.distinct("student", { lesson: lesson._id, action });
+    const distinctFor = (action) => Log.distinct("student", { lesson: lesson._id, action, ...notQuizPause });
     const [backStudents, skipStudents, pauseStudents] = await Promise.all(["backward_seek", "forward_seek", "pause"].map(distinctFor));
 
     const opened = Math.max(furthest.length, (lesson.watched || []).length);
@@ -164,6 +180,8 @@ const getClickstream = async (req, res) => {
         reached_end: lengthSeconds ? furthest.filter((f) => f.max >= lengthSeconds * 0.95).length : null,
       },
       students_by_minute: studentsByMinute,
+      // Quiz question timestamps in seconds (pauses at these are excluded from students_by_minute and students.paused)
+      quiz_times: quizTimes,
       by_minute: byMinute,
       hotspots: {
         most_paused: topN("pause"),
